@@ -43,15 +43,15 @@ export const INVENTORY_ZPL = `^XA
 // the URL-encoded ZPL is appended.
 export const DEFAULT_PREVIEW_URL = 'https://api.labelary.com/v1/printers/{dpmm}dpmm/labels/{widthIn}x{lengthIn}/0/';
 
-// Text label for box labels, 50×75 mm (50 mm across the head, 75 mm feed direction;
-// 12 dpmm = 590×886 dots), no QR code.
+// Text label for box labels, 75×50 mm (75 mm across the head, 50 mm feed direction;
+// 12 dpmm = 900×600 dots), no QR code.
 // ^CI28 = UTF-8 (umlauts), ^FB = field block: centred, wraps / clips inside the label.
 export const TEXT_LABEL_ZPL = `^XA
 ^CI28
-^FO25,40^A0N,90,90^FB540,2,0,C^FD{{line1}}^FS
-^FO25,250^GB540,4,4^FS
-^FO25,290^A0N,60,60^FB540,3,0,C^FD{{line2}}^FS
-^FO25,520^A0N,45,45^FB540,6,0,C^FD{{line3}}^FS
+^FO30,30^A0N,90,90^FB840,2,0,C^FD{{line1}}^FS
+^FO30,225^GB840,4,4^FS
+^FO30,255^A0N,60,60^FB840,2,0,C^FD{{line2}}^FS
+^FO30,400^A0N,45,45^FB840,3,0,C^FD{{line3}}^FS
 ^XZ`;
 
 export const PRINT_METHODS = ['direct', 'transfer'];
@@ -121,8 +121,8 @@ function defaultFormats() {
     },
     {
       // Box / text labels on the thermal transfer printer.
-      id: 'fmt-text-50x75', name: 'Textlabel 50×75 mm', articleNo: '',
-      widthMm: 50, lengthMm: 75, shape: 'rect', media: 'any',
+      id: 'fmt-text-75x50', name: 'Textlabel 75×50 mm', articleNo: '',
+      widthMm: 75, lengthMm: 50, shape: 'rect', media: 'any',
       sensing: '', offsetXMm: 0, offsetYMm: 0
     },
     {
@@ -155,7 +155,7 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
         type: 'zpl', fields: INVENTORY_FIELDS.map(f => ({ ...f })), zpl: inventoryZpl
       },
       {
-        id: 'layout-text-50x75', name: 'Textlabel 50×75 mm', formatId: 'fmt-text-50x75', dpmm: 12,
+        id: 'layout-text-75x50', name: 'Textlabel 75×50 mm', formatId: 'fmt-text-75x50', dpmm: 12,
         type: 'zpl', fields: TEXT_FIELDS.map(f => ({ ...f })), zpl: TEXT_LABEL_ZPL
       }
     ],
@@ -182,10 +182,10 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
         layoutId: 'layout-inventory', printerId
       },
       {
-        id: 'job-manual-text-50x75', name: 'Textlabel 50×75 mm (manuell)',
+        id: 'job-manual-text-75x50', name: 'Textlabel 75×50 mm (manuell)',
         trigger: NO_TRIGGER(),
         extract: {},
-        layoutId: 'layout-text-50x75', printerId: textPrinterId
+        layoutId: 'layout-text-75x50', printerId: textPrinterId
       }
     ]
   };
