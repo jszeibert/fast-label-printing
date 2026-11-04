@@ -4,131 +4,179 @@
 
 body {
   width: 380px;
-  min-height: 450px;
   margin: 0;
-  padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  line-height: 1.6;
-  background-color: #f5f5f5;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #fff;
   color: #333;
 }
 
-.container {
-  padding: 0;
-  background: white;
-  min-height: 100%;
+[hidden] {
+  display: none !important;
 }
 
-/* Header mit Options Button */
 .popup-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 15px 20px;
-  background: white;
-  border-bottom: 2px solid #007acc;
+  justify-content: center;
   position: relative;
+  padding: 12px 20px;
+  border-bottom: 2px solid #007acc;
 }
 
 .popup-header h3 {
   margin: 0;
-  padding: 0;
-  font-size: 1.3em;
+  font-size: 1.25em;
   color: #007acc;
-  flex: 1;
-  text-align: center;
-  border: none;
 }
 
-.options-btn {
+.icon-btn {
   position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 12px;
   background: none;
   border: none;
   font-size: 16px;
   cursor: pointer;
-  padding: 6px;
+  padding: 4px 6px;
   border-radius: 4px;
-  color: #666;
-  transition: background-color 0.2s, color 0.2s;
+}
+
+.icon-btn:hover {
+  background: #f0f0f0;
+}
+
+main {
+  padding: 12px 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 600;
+  color: #555;
+  font-size: 11px;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fff;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.row {
+  margin-bottom: 10px;
+}
+
+.row.two {
+  display: flex;
+  gap: 10px;
+}
+
+.row.two > div:first-child {
+  flex: 1;
+}
+
+.copies {
+  width: 70px;
+}
+
+.preview {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.options-btn:hover {
-  background: #f0f0f0;
-  color: #007acc;
-}
-
-.options-btn:active {
-  background: #e0e0e0;
-}
-
-/* Preview container - fixed size for 25x14mm label */
-.preview-container {
-  width: 300px;
-  height: 167px;
+  margin: 0 auto 6px;
   border: 2px solid #ddd;
   border-radius: 6px;
-  background-color: #fff;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  margin: 15px auto;
-  position: relative;
-  display: block;
+  background: #fff;
+  overflow: hidden;
 }
 
-.preview-container::before {
-  content: "Preview will appear here";
+.preview.round {
+  border-radius: 50%;
+}
+
+.preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.preview-msg {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  padding: 0 10px;
   color: #999;
-  font-size: 12px;
-  pointer-events: none;
+  font-size: 11px;
   text-align: center;
 }
 
-.preview-container.has-preview::before {
+.preview-msg:empty {
   display: none;
 }
 
-/* Button group */
-.button-group {
-  display: flex;
-  justify-content: center;
-  padding: 0 20px 15px 20px;
+.format-info {
+  text-align: center;
+  font-size: 11px;
+  color: #666;
+  margin: -4px 0 10px;
 }
 
-.btn-base {
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.fields:empty {
+  display: none;
+}
+
+.warnings {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.warnings li {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  color: #856404;
+  font-size: 11px;
+}
+
+.print-btn,
+.btn {
+  width: 100%;
+  padding: 10px 20px;
   border: none;
   border-radius: 6px;
-  cursor: pointer;
   font-weight: 600;
-  transition: all 0.3s;
-  text-align: center;
-}
-
-.print-btn {
-  padding: 10px 20px;
-  background: #28a745;
-  color: white;
   cursor: pointer;
-  font-size: 13px;
-  min-width: 120px;
+  color: #fff;
+  background: #28a745;
 }
 
 .print-btn:hover {
   background: #218838;
-}
-
-.print-btn:active {
-  background: #1e7e34;
 }
 
 .print-btn:disabled {
@@ -136,189 +184,47 @@ body {
   cursor: not-allowed;
 }
 
-.update-btn {
-  width: 100%;
-  padding: 8px 12px;
+.btn {
   background: #007acc;
-  color: white;
-  cursor: pointer;
-  font-size: 12px;
 }
 
-.update-btn:hover {
-  background: #005a9e;
-}
-
-.update-btn:active {
-  background: #004785;
-}
-
-.settings-btn {
-  background-color: #007bff;
-  color: white;
-  padding: 10px 20px;
-  margin-top: 15px;
-}
-
-.settings-btn:hover {
-  background-color: #0056b3;
-}
-
-/* Compact form styling */
-.info-form {
-  background: #fafafa;
-  padding: 15px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.form-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.form-row:last-of-type {
-  margin-bottom: 15px;
-}
-
-.input-group {
-  flex: 1;
-}
-
-.input-group label {
-  display: block;
-  margin-bottom: 3px;
-  font-weight: 600;
-  color: #555;
+.zpl-details {
+  margin-top: 10px;
   font-size: 11px;
 }
 
-.input-group input {
-  width: 100%;
-  padding: 6px 8px;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
-  transition: border-color 0.3s;
-}
-
-.input-group input:focus {
-  outline: none;
-  border-color: #007acc;
-  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.1);
-}
-
-/* Message-Container vereinheitlichen: */
-.message-container {
-  text-align: center;
-  padding: 20px;
-  border-radius: 8px;
-  margin: 10px;
-}
-
-.settings-required-message {
-  background-color: #fff3cd;
-  border: 1px solid #ffeaa7;
-}
-
-.settings-required-message h3 {
-  color: #856404;
-  margin-bottom: 15px;
-}
-
-.settings-required-message ul {
-  text-align: left;
-  margin: 15px 0;
-  padding-left: 20px;
-}
-
-.settings-required-message li {
-  color: #856404;
-  margin: 5px 0;
-}
-
-.not-idoit-message {
-  padding: 40px 20px;
-  background: white;
-}
-
-.not-idoit-message h3 {
-  color: #007acc;
-  margin-bottom: 20px;
-  border: none;
-  padding: 0;
-}
-
-.not-idoit-message p {
-  margin: 15px 0;
-  color: #666;
-  line-height: 1.5;
-  font-size: 13px;
-}
-
-.not-idoit-message code {
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #d63384;
-}
-
-.not-idoit-message .options-link {
-  display: inline-block;
-  margin-top: 15px;
-  padding: 8px 16px;
-  background: #007acc;
-  color: white;
-  text-decoration: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: background 0.3s;
-}
-
-.not-idoit-message .options-link:hover {
-  background: #005a9e;
-}
-
-/* Füge am Ende hinzu: */
-
-/* Templates are hidden by default */
-template {
-  display: none;
-}
-
-/* Ensure message containers extend .message-container */
-.settings-required-message,
-.not-idoit-message {
-  /* Already inheriting from .message-container via HTML */
-}
-
-/* Ensure all buttons extend .btn-base */
-.print-btn,
-.update-btn,
-.settings-btn,
-.options-link {
-  /* Add the shared button properties */
-  border: none;
-  border-radius: 6px;
+.zpl-details summary {
   cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s;
-  text-align: center;
+  color: #666;
 }
 
-/* Status styles */
-.status { 
+.zpl-details pre {
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px;
+  background: #f4f4f4;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.message {
+  padding: 30px 20px;
   text-align: center;
+  color: #666;
+}
+
+.status {
   font-size: 11px;
   padding: 8px 15px;
-  margin: 0;
   min-height: 25px;
   border-top: 1px solid #e0e0e0;
   background: #f8f9fa;
+  text-align: center;
+}
+
+.status:empty {
+  display: none;
 }
 
 .status.loading {

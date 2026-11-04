@@ -1,6 +1,6 @@
 # Fast Label Printering
 
-Browser extension for printing inventory labels from I-Doit using ZPL on Zebra printers.
+Browser extension for printing labels (ZPL) on Zebra printers – filled automatically from I-Doit (and soon Netbox) or manually.
 
 ## 📥 Download
 
@@ -27,32 +27,41 @@ Browser extension for printing inventory labels from I-Doit using ZPL on Zebra p
 
 ## ✨ Features
 
-- **Auto-extract** object data from I-Doit pages
-- **Live preview** of labels before printing
-- **Direct printing** to Zebra printers via HTTP
-- **Customizable** ZPL templates and text replacements
-- **Cross-browser** compatible (Firefox & Chrome)
+- **Printers**: any number of Zebra printers (URL, resolution, print method, darkness, speed)
+- **Label types**: physical labels (size, shape, media, sensing, offsets) – `^PW`/`^LL` are generated
+- **Templates**: ZPL with `{{field}}` placeholders; fields become inputs in the popup
+- **Label jobs**: template + printer + optional website trigger + extraction rules
+- **Manual jobs**: jobs without website are always selectable in the popup
+- **Import / Export** of the whole configuration as JSON
+- Settings from v2 are migrated automatically
 
 ## 🔧 Configuration
 
-Configure in the extension options page:
+Everything is configured in the options page (tabs *Drucker*, *Labeltypen*, *Templates*, *Labeldrucke*, *Import / Export*).
 
-### Required Settings
-- **I-Doit URL**: Your I-Doit instance URL (e.g., `https://idoit.example.com`)
-- **Zebra Printer URL**: Printer API endpoint (e.g., `http://localhost:631/pstprnt`)
+### Extraction rules
 
-### Optional Settings
-- **ZPL Template**: Customize label layout with placeholders `{ID}`, `{Line1}`, `{Line2}`, `{TYPE}`
-- **Preview API**: Label preview service URL
-- **Text Replacements**: JSON list for text substitutions
+A label job extracts field values from the current page. Rules are evaluated top to bottom:
+
+```json
+{
+  "url":   { "from": "const", "value": "https://idoit.example.com" },
+  "id":    { "from": "urlParam", "name": "objID" },
+  "type":  { "from": "title", "split": " > ", "index": 1,
+             "post": [{ "op": "replace", "search": "Development", "replace": "Dev" }] },
+  "name":  { "from": "title", "split": " > ", "index": 2 },
+  "line1": { "from": "field", "field": "name", "post": [{ "op": "line", "maxChars": 11, "line": 1 }] }
+}
+```
+
+Sources: `const`, `urlParam`, `urlRegex`, `title`, `field`. Post ops: `trim`, `upper`, `lower`, `replace`, `line`.
+A job only triggers on its website (URL prefix); *URL contains* / *regex* narrow it down further.
 
 ## 📖 Usage
 
-1. Navigate to an I-Doit object page
-2. Click the extension icon in the toolbar
-3. Extension auto-populates fields from the page
-4. Click "Show Preview" to see label preview
-5. Click "Print" to send to Zebra printer
+1. Open a page (e.g. an I-Doit object) and click the extension icon
+2. Pick a label job (matching jobs first, then manual ones) – fields are pre-filled
+3. Adjust fields, printer and copies, then click "Drucken"
 
 ## 🔄 Updates
 
@@ -75,6 +84,11 @@ git clone https://github.com/jszeibert/fast-label-printering.git
 2. Enable "Developer mode"
 3. "Load unpacked" → select `src/` folder
 
+### Tests
+```bash
+node --test
+```
+
 ### Release Process
 1. Update version in `src/manifest.json`
 2. Commit and push to main branch
@@ -87,7 +101,9 @@ git clone https://github.com/jszeibert/fast-label-printering.git
 │   ├── manifest.json       # Extension manifest (Firefox + Chrome compatible)
 │   ├── popup/             # Extension popup UI
 │   ├── options/           # Settings page
+│   ├── lib/               # Data model, ZPL compiler, extraction (pure, unit-tested)
 │   └── icons/             # Extension icons
+├── test/                  # node:test unit tests
 └── .github/workflows/     # Automated builds
 ```
 
@@ -95,7 +111,7 @@ git clone https://github.com/jszeibert/fast-label-printering.git
 
 - **Storage**: Save extension settings
 - **Active Tab**: Access current I-Doit page
-- **Host Permissions**: Communicate with printer and preview APIs
+- **Host Permissions**: Send ZPL to the printers
 
 ## 📄 License
 

@@ -1,310 +1,202 @@
-// Browser API compatibility
-const browserAPI = (typeof browser !== 'undefined') ? browser : chrome;
+import { browserAPI } from '../lib/browser.js';
+import { loadLibrary, sendToPrinter } from '../lib/store.js';
+import { byId } from '../lib/model.js';
+import { hasTrigger, matchesTrigger, extractFields } from '../lib/extract.js';
+import { compileLabel, checkCompatibility } from '../lib/zpl.js';
+import { buildPreviewUrl } from '../lib/preview.js';
 
-// Utility Classes
-class LabelProcessor {
-  static splitName(name, maxLength = 11) {
-    if (!name || name.length <= maxLength) return [name || '', ''];
-    
-    const breakPoints = [' ', '-', '_', '.'];
-    let splitIndex = -1;
-    
-    for (const char of breakPoints) {
-      const idx = name.lastIndexOf(char, maxLength);
-      if (idx > splitIndex) splitIndex = idx;
-    }
-    
-    if (splitIndex === -1) splitIndex = maxLength;
-    
-    return [
-      name.substring(0, splitIndex).trim(),
-      name.substring(splitIndex).trim()
-    ];
-  }
+const $ = id => document.getElementById(id);
 
-  static applyReplacements(text, replaceList) {
-    if (!text || !replaceList) return text;
-    
-    return replaceList.split(',')
-      .map(pair => pair.split('='))
-      .filter(parts => parts.length === 2)
-      .reduce((result, [search, replace]) => 
-        result.replace(new RegExp(search.trim(), 'g'), replace.trim()), text
-      );
-  }
+let library;
+let page = { url: '', title: '' };
+let current = null; // { job, layout, format, values }
+let zpl = '';
 
-  static generateZPL(data, template, idoitUrl) {
-    const replacements = { 
-      '{URL}': idoitUrl, 
-      ...Object.fromEntries(
-        Object.entries(data).map(([key, val]) => [`{${key.toUpperCase()}}`, val || ''])
-      )
-    };
-    
-    return Object.entries(replacements).reduce(
-      (zpl, [placeholder, value]) => zpl.replace(new RegExp(placeholder, 'g'), value),
-      template
-    );
-  }
+function setStatus(message, type = 'info') {
+  $('status').textContent = message;
+  $('status').className = `status ${type}`;
 }
 
-class PopupUI {
-  constructor() {
-    this.elements = null;
-  }
-
-  init() {
-    this.elements = {
-      container: document.querySelector('.container'),
-      mainContent: document.getElementById('main-content'),
-      status: document.getElementById('status'),
-      preview: document.getElementById('label-preview'),
-      printBtn: document.getElementById('print-btn'),
-      updateBtn: document.getElementById('update-preview-btn'),
-      optionsBtn: document.getElementById('options-btn'),
-      inputs: {
-        id: document.getElementById('id'),
-        type: document.getElementById('type'),
-        line1: document.getElementById('line1'),
-        line2: document.getElementById('line2')
-      }
-    };
-  }
-
-  updateStatus(message, type = 'info') {
-    if (this.elements?.status) {
-      this.elements.status.textContent = message;
-      this.elements.status.className = `status ${type}`;
-    }
-  }
-
-  getFormData() {
-    if (!this.elements) return {};
-    
-    return {
-      id: this.elements.inputs.id?.value || '',
-      line1: this.elements.inputs.line1?.value || '',
-      line2: this.elements.inputs.line2?.value || '',
-      type: this.elements.inputs.type?.value || ''
-    };
-  }
-
-  populateForm(data) {
-    if (!this.elements) return;
-    
-    Object.entries(data).forEach(([key, value]) => {
-      if (this.elements.inputs[key]) {
-        this.elements.inputs[key].value = value || '';
-      }
-    });
-  }
+function openOptions() {
+  browserAPI.runtime.openOptionsPage().then(() => window.close());
 }
 
-class PreviewManager {
-  static show(zplData, previewApiUrl, ui) {
-    ui.updateStatus('Generating preview...', 'loading');
-    
-    const url = `${previewApiUrl}${encodeURIComponent(zplData)}`;
-    const previewElement = ui.elements?.preview;
-    
-    if (previewElement) {
-      const img = new Image();
-      img.onload = function() {
-        previewElement.style.backgroundImage = `url('${url}')`;
-        previewElement.classList.add('has-preview');
-        ui.updateStatus('Preview ready - click print to send to printer', 'success');
-        
-        const printBtn = ui.elements?.printBtn;
-        if (printBtn) printBtn.disabled = false;
-      };
-      img.onerror = function() {
-        ui.updateStatus('Preview generation failed - check your settings', 'error');
-        const printBtn = ui.elements?.printBtn;
-        if (printBtn) printBtn.disabled = true;
-      };
-      img.src = url;
-    }
-  }
+function addOptions(select, items, label) {
+  if (!items.length) return;
+  const group = document.createElement('optgroup');
+  group.label = label;
+  for (const item of items) group.append(new Option(item.name, item.id));
+  select.append(group);
 }
 
-class SettingsManager {
-  static REQUIRED_KEYS = ['idoitUrl', 'printerUrl', 'previewApiUrl', 'zplTemplate'];
-  static STORAGE_MAP = {
-    idoitUrl: 'idoit-base-url',
-    zplTemplate: 'zpl-template',
-    previewApiUrl: 'preview-api-url',
-    replaceList: 'replace-list',  
-    printerUrl: 'printer-url'
+// Jobs bound to this website + jobs without URL (manual). Jobs of other sites are hidden.
+function availableJobs() {
+  return {
+    matched: library.jobs.filter(job => matchesTrigger(job.trigger, page.url)),
+    manual: library.jobs.filter(job => !hasTrigger(job.trigger))
   };
-
-  static async load() {
-    const storageKeys = Object.values(this.STORAGE_MAP);
-    const result = await browserAPI.storage.local.get(storageKeys);
-    
-    return Object.fromEntries(
-      Object.entries(this.STORAGE_MAP).map(([key, storageKey]) => 
-        [key, result[storageKey] || '']
-      )
-    );
-  }
-
-  static checkRequired(settings) {
-    return this.REQUIRED_KEYS.filter(key => !settings[key]);
-  }
 }
 
-// Template Functions
-function showTemplate(templateId) {
-  const template = document.getElementById(templateId);
-  const container = document.querySelector('.container');
-  
-  if (template && container) {
-    const clone = template.content.cloneNode(true);
-    container.innerHTML = '';
-    container.appendChild(clone);
-    
-    // Bind events for template buttons
-    if (templateId === 'settings-required-template') {
-      document.getElementById('open-settings-btn')?.addEventListener('click', openOptionsPage);
-    } else if (templateId === 'not-idoit-template') {
-      document.getElementById('options-link-inline')?.addEventListener('click', openOptionsPage);
-    }
+function selectJob(jobId) {
+  const job = byId(library.jobs, jobId);
+  const layout = byId(library.layouts, job?.layoutId);
+  const format = byId(library.formats, layout?.formatId);
+  if (!job || !layout || !format) {
+    current = null;
+    $('fields').replaceChildren();
+    return setStatus('Labeldruck unvollständig: Layout oder Format fehlt.', 'error');
   }
+
+  const { values, errors } = extractFields(job.extract, page);
+  current = { job, layout, format, values };
+
+  if (byId(library.printers, job.printerId)) $('printer-select').value = job.printerId;
+  $('format-info').textContent =
+    `${layout.name} · ${format.name}${format.shape === 'round' ? ' (rund)' : ''}`;
+  shapePreview(format);
+
+  renderFields();
+  update();
+  setStatus(errors.length ? `Extraktion: ${errors.join('; ')}` : '', errors.length ? 'error' : 'info');
 }
 
-// Options Page Functions
-function openOptionsPage() {
-  try {
-    if (browserAPI.runtime && browserAPI.runtime.openOptionsPage) {
-      browserAPI.runtime.openOptionsPage().then(() => {
-        window.close();
-      }).catch(() => {
-        openOptionsTabFallback();
-      });
-    } else {
-      openOptionsTabFallback();
-    }
-  } catch (error) {
-    console.error('Error opening options:', error);
-    openOptionsTabFallback();
-  }
+// Preview box takes the label's aspect ratio (and is round for round labels).
+function shapePreview(format) {
+  const box = $('preview');
+  const ratio = format.widthMm / format.lengthMm;
+  box.style.aspectRatio = `${format.widthMm} / ${format.lengthMm}`;
+  box.style.width = `min(100%, ${Math.round(200 * ratio)}px)`; // max. 200px high
+  box.classList.toggle('round', format.shape === 'round');
 }
 
-function openOptionsTabFallback() {
-  try {
-    const optionsUrl = browserAPI.runtime.getURL('options/options.html');
-    browserAPI.tabs.create({ url: optionsUrl }).then(() => {
-      window.close();
-    }).catch((error) => {
-      console.error('Failed to open options tab:', error);
-      window.open(optionsUrl, '_blank');
-      window.close();
+let previewTimer;
+let previewRequest = 0;
+function schedulePreview(printer) {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => loadPreview(printer), 400);
+}
+
+function loadPreview(printer) {
+  const img = $('preview-img');
+  const msg = $('preview-msg');
+  const url = buildPreviewUrl(library.settings.previewApiUrl, { printer, format: current.format, zpl });
+  if (!url) {
+    img.hidden = true;
+    msg.textContent = 'Keine Vorschau-URL eingestellt';
+    return;
+  }
+  const request = ++previewRequest;
+  msg.textContent = 'Vorschau wird geladen …';
+  const next = new Image();
+  next.onload = () => {
+    if (request !== previewRequest) return;
+    img.src = next.src;
+    img.hidden = false;
+    msg.textContent = '';
+  };
+  next.onerror = () => {
+    if (request !== previewRequest) return;
+    img.hidden = true;
+    msg.textContent = 'Vorschau fehlgeschlagen – Vorschau-URL in den Einstellungen prüfen';
+  };
+  next.src = url;
+}
+
+function renderFields() {
+  const container = $('fields');
+  container.replaceChildren();
+  for (const field of current.layout.fields || []) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'field';
+    const label = document.createElement('label');
+    label.textContent = field.label || field.key;
+    label.htmlFor = `field-${field.key}`;
+    const input = document.createElement('input');
+    input.id = `field-${field.key}`;
+    input.value = current.values[field.key] ?? '';
+    input.addEventListener('input', () => {
+      current.values[field.key] = input.value;
+      update();
     });
+    wrapper.append(label, input);
+    container.append(wrapper);
+  }
+}
+
+function update() {
+  if (!current) return;
+  const printer = byId(library.printers, $('printer-select').value);
+  const warnings = $('warnings');
+  warnings.replaceChildren();
+  if (!printer) {
+    zpl = '';
+    $('print-btn').disabled = true;
+    return;
+  }
+
+  const { layout, format, values } = current;
+  zpl = compileLabel({ layout, format, printer, values, copies: $('copies').value });
+  $('zpl-output').textContent = zpl;
+  schedulePreview(printer);
+
+  const hints = checkCompatibility({ layout, format, printer });
+  if (!printer.url) hints.unshift(`Für „${printer.name}“ ist keine URL eingetragen.`);
+  for (const hint of hints) {
+    const li = document.createElement('li');
+    li.textContent = `⚠️ ${hint}`;
+    warnings.append(li);
+  }
+  $('print-btn').disabled = !printer.url;
+}
+
+async function print() {
+  const printer = byId(library.printers, $('printer-select').value);
+  if (!zpl || !printer?.url) return;
+  setStatus('Drucke …', 'loading');
+  $('print-btn').disabled = true;
+  try {
+    await sendToPrinter(printer.url, zpl);
+    setStatus(`An „${printer.name}“ gesendet.`, 'success');
   } catch (error) {
-    console.error('Fallback failed:', error);
+    setStatus(`Druck fehlgeschlagen: ${error.message}`, 'error');
+  } finally {
+    $('print-btn').disabled = false;
   }
 }
 
-// Main PopupManager
-class PopupManager {
-  constructor() {
-    this.settings = {};
-    this.zplData = '';
-    this.ui = new PopupUI();
+async function init() {
+  $('options-btn').addEventListener('click', openOptions);
+  $('empty-settings-btn').addEventListener('click', openOptions);
+
+  try {
+    library = await loadLibrary();
+  } catch (error) {
+    return setStatus(`Einstellungen konnten nicht geladen werden: ${error.message}`, 'error');
   }
 
-  async initialize() {
-    this.ui.init();
-    this.settings = await SettingsManager.load();
-    
-    const missing = SettingsManager.checkRequired(this.settings);
-    if (missing.length > 0) {
-      return showTemplate('settings-required-template');
-    }
-    
-    const tab = await this.getCurrentTab();
-    if (!tab) {
-      return showTemplate('not-idoit-template');
-    }
-    
-    if (this.isIdoitPage(tab.url)) {
-      this.processIdoitPage(tab);
-    } else {
-      showTemplate('not-idoit-template');
-    }
+  const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+  page = { url: tab?.url || '', title: tab?.title || '' };
+
+  const { matched, manual } = availableJobs();
+  if (!matched.length && !manual.length) {
+    $('empty').hidden = false;
+    return;
   }
 
-  async getCurrentTab() {
-    const tabs = await browserAPI.tabs.query({active: true, currentWindow: true});
-    return tabs[0];
-  }
+  const jobSelect = $('job-select');
+  addOptions(jobSelect, matched, 'Passend zu dieser Seite');
+  addOptions(jobSelect, manual, 'Manuell');
 
-  isIdoitPage(url) {
-    return url.startsWith(this.settings.idoitUrl) && url.includes('objID');
-  }
+  const printerSelect = $('printer-select');
+  for (const printer of library.printers) printerSelect.append(new Option(printer.name, printer.id));
 
-  processIdoitPage(tab) {
-    const urlParams = new URLSearchParams(new URL(tab.url).search);
-    const titleParts = tab.title.split(' > ');
-    
-    const [line1, line2] = LabelProcessor.splitName(titleParts[2] || '');
-    
-    const labelData = {
-      id: urlParams.get('objID'),
-      type: LabelProcessor.applyReplacements(titleParts[1] || '', this.settings.replaceList),
-      line1,
-      line2
-    };
-    
-    this.ui.populateForm(labelData);
-    this.updatePreview();
-    this.bindEvents();
-  }
+  jobSelect.addEventListener('change', () => selectJob(jobSelect.value));
+  printerSelect.addEventListener('change', update);
+  $('copies').addEventListener('input', update);
+  $('print-btn').addEventListener('click', print);
 
-  updatePreview() {
-    const formData = this.ui.getFormData();
-    formData.type = LabelProcessor.applyReplacements(formData.type, this.settings.replaceList);
-    this.zplData = LabelProcessor.generateZPL(formData, this.settings.zplTemplate, this.settings.idoitUrl);
-    PreviewManager.show(this.zplData, this.settings.previewApiUrl, this.ui);
-  }
-
-  bindEvents() {
-    const handlers = {
-      'update-preview-btn': () => this.updatePreview(),
-      'print-btn': () => this.print(),
-      'options-btn': () => openOptionsPage()
-    };
-    
-    Object.entries(handlers).forEach(([id, handler]) => {
-      document.getElementById(id)?.addEventListener('click', handler);
-    });
-  }
-
-  async print() {
-    if (!this.zplData) {
-      return this.ui.updateStatus('No label data to print', 'error');
-    }
-    
-    this.ui.updateStatus('Printing...', 'loading');
-    try {
-      const response = await fetch(this.settings.printerUrl, {
-        method: 'POST', 
-        body: this.zplData, 
-        headers: {'Content-Type': 'application/x-zpl'}
-      });
-      
-      this.ui.updateStatus(
-        response.ok ? 'Print sent successfully' : `Print failed: ${response.statusText}`,
-        response.ok ? 'success' : 'error'
-      );
-    } catch (error) {
-      this.ui.updateStatus(`Print failed: ${error.message}`, 'error');
-    }
-  }
+  $('main').hidden = false;
+  selectJob((matched[0] ?? manual[0]).id);
 }
 
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-  const popupManager = new PopupManager();
-  popupManager.initialize();
-});
+document.addEventListener('DOMContentLoaded', init);

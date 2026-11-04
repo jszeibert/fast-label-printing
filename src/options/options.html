@@ -1,79 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>Fast Label Printer - Settings</title>
+  <title>Fast Label Printer – Einstellungen</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>🏷️ Fast Label Printer Settings</h1>
-      <p>Configure your I-Doit connection and printer settings</p>
+      <h1>🏷️ Fast Label Printer</h1>
+      <nav class="tabs" id="tabs">
+        <button data-tab="printers">🖨️ Drucker</button>
+        <button data-tab="formats">📐 Labeltypen</button>
+        <button data-tab="layouts">🧩 Templates</button>
+        <button data-tab="jobs">🔗 Labeldrucke</button>
+        <button data-tab="general">⚙️ Allgemein</button>
+      </nav>
     </header>
 
     <main>
-      <section class="section">
-        <h2>I-Doit Configuration</h2>
-        <div class="form-group">
-          <label for="idoit-base-url">I-Doit Base URL:</label>
-          <input type="url" id="idoit-base-url" placeholder="https://idoit.example.com" required>
-          <small>The base URL of your I-Doit installation</small>
-        </div>
-        
-        <div class="form-group">
-          <label for="replace-list">Type Replace List:</label>
-          <input type="text" id="replace-list" placeholder="Development=Dev,Temperature=Temp">
-          <small>Comma-separated list of replacements for object types (search=replace)</small>
+      <p id="tab-help" class="tab-help"></p>
+
+      <section id="editor" class="editor">
+        <aside class="list-pane">
+          <ul id="entity-list" class="entity-list"></ul>
+          <button id="add-btn" class="btn btn-secondary">＋ Neu</button>
+        </aside>
+
+        <div class="form-pane">
+          <form id="entity-form" class="entity-form" autocomplete="off"></form>
+          <div class="form-actions">
+            <button id="save-btn" class="btn btn-primary">Speichern</button>
+            <button id="duplicate-btn" class="btn btn-secondary">Duplizieren</button>
+            <span id="extra-actions"></span>
+            <button id="delete-btn" class="btn btn-danger">Löschen</button>
+          </div>
+          <div id="extra-panel"></div>
         </div>
       </section>
 
-      <section class="section">
-        <h2>Printer Configuration</h2>
+      <section id="general" hidden>
+      <div class="section">
+        <h2>Vorschau</h2>
         <div class="form-group">
-          <label for="printer-url">Printer URL:</label>
-          <input type="url" id="printer-url" placeholder="http://localhost:631/pstprnt" required>
-          <small>URL endpoint for your ZPL printer</small>
+          <label for="preview-api-url">Vorschau-API-URL (Labelary)</label>
+          <input type="text" id="preview-api-url" class="code" placeholder="https://api.labelary.com/v1/printers/{dpmm}dpmm/labels/{widthIn}x{lengthIn}/0/">
+          <small>Platzhalter: {dpmm} = Auflösung des Druckers, {widthIn} / {lengthIn} = Größe des Labeltyps in Zoll. Das ZPL wird angehängt.
+Leer lassen = keine Vorschau. Hinweis: Der Label-Inhalt wird dabei an diesen Dienst gesendet.</small>
         </div>
-        
-        <div class="form-group">
-          <label for="preview-api-url">Preview API URL:</label>
-          <input type="url" id="preview-api-url" placeholder="http://api.labelary.com/v1/printers/12dpmm/labels/0.94x0.55/0/" required>
-          <small>API endpoint for generating label previews</small>
+        <div class="button-row">
+          <button id="save-general-btn" class="btn btn-primary">Speichern</button>
+          <button id="default-preview-btn" class="btn btn-secondary">Standard-URL</button>
+          <button id="test-preview-btn" class="btn btn-secondary">Vorschau testen</button>
         </div>
-      </section>
-
-      <section class="section">
-        <h2>ZPL Template</h2>
-        <div class="form-group">
-          <label for="zpl-template">ZPL Code Template:</label>
-          <textarea id="zpl-template" rows="12" placeholder="Enter your ZPL template here..." required></textarea>
-          <small>
-            Available placeholders: {URL}, {ID}, {LINE1}, {LINE2}, {TYPE}<br>
-            <a href="#" id="reset-template">Reset to default template</a>
-          </small>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2>Test Configuration</h2>
-        <div class="test-buttons">
-          <button type="button" id="test-connection" class="btn btn-secondary">Test I-Doit Connection</button>
-          <button type="button" id="test-printer" class="btn btn-secondary">Test Printer</button>
-          <button type="button" id="test-preview" class="btn btn-secondary">Test Preview API</button>
-        </div>
-        <div id="test-results" class="test-results"></div>
-      </section>
-
-      <div class="actions">
-        <button type="button" id="save-settings" class="btn btn-primary">Save Settings</button>
-        <button type="button" id="reset-settings" class="btn btn-danger">Reset to Defaults</button>
+        <div id="preview-test" class="preview-test"></div>
       </div>
-      
+
+      <div class="section">
+        <h2>Import / Export</h2>
+        <p>Die komplette Konfiguration (Drucker, Labeltypen, Templates, Labeldrucke) als JSON-Datei – z. B. zum Teilen mit Kollegen.</p>
+        <div class="button-row">
+          <button id="export-btn" class="btn btn-primary">Exportieren</button>
+          <label class="btn btn-secondary file-btn">
+            Importieren …
+            <input id="import-file" type="file" accept="application/json,.json" hidden>
+          </label>
+          <button id="reset-btn" class="btn btn-danger">Auf Standard zurücksetzen</button>
+        </div>
+      </div>
+      </section>
+
       <div id="status" class="status"></div>
     </main>
   </div>
 
-  <script src="options.js"></script>
+  <script type="module" src="options.js"></script>
 </body>
 </html>
