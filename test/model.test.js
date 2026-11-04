@@ -19,6 +19,18 @@ test('default library is consistent and contains the Dymo formats', () => {
   assert.equal(lib.printers.length, 2);
   assert.deepEqual(lib.formats.map(f => f.id), ['fmt-inventory', 'fmt-dymo-s0722540', 'fmt-dymo-14681']);
   assert.equal(byId(lib.formats, 'fmt-dymo-14681').shape, 'round');
+  assert.ok(byId(lib.jobs, lib.settings.defaultJobId));
+});
+
+test('default jobs: I-Doit, Netbox and manual inventory share the QR layout; text label on Dymo', () => {
+  const lib = createDefaultLibrary();
+  for (const id of ['job-idoit-inventory', 'job-netbox-inventory', 'job-manual-inventory']) {
+    assert.equal(byId(lib.jobs, id).layoutId, 'layout-inventory');
+  }
+  const text = byId(lib.jobs, 'job-manual-text-32x57');
+  assert.equal(byId(lib.layouts, text.layoutId).formatId, 'fmt-dymo-s0722540');
+  assert.equal(byId(lib.printers, text.printerId).printMethod, 'direct');
+  assert.match(byId(lib.layouts, 'layout-inventory').zpl, /\{\{qr\}\}/);
 });
 
 test('migrates v2 settings with unchanged default template', () => {
@@ -63,6 +75,6 @@ test('normalizeLibrary fills collections and rejects newer schemas', () => {
 test('findReferences reports users of an entity', () => {
   const lib = createDefaultLibrary();
   assert.deepEqual(findReferences(lib, 'formats', 'fmt-inventory'), ['Inventarlabel (QR)']);
-  assert.equal(findReferences(lib, 'layouts', 'layout-inventory').length, 2);
+  assert.equal(findReferences(lib, 'layouts', 'layout-inventory').length, 3);
   assert.deepEqual(findReferences(lib, 'formats', 'fmt-dymo-14681'), []);
 });

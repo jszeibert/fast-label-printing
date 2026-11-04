@@ -54,8 +54,18 @@ A label job extracts field values from the current page. Rules are evaluated top
 }
 ```
 
-Sources: `const`, `urlParam`, `urlRegex`, `title`, `field`. Post ops: `trim`, `upper`, `lower`, `replace`, `line`.
+Sources: `const`, `urlParam`, `urlRegex`, `title`, `field`, `template` (e.g. `"{{url}}/?objID={{id}}"`),
+and – evaluated inside the page with the user's logged-in session – `css` (`selector`, `attr`) and
+`api` (`url` with `{{field}}` placeholders, JSON `path`, e.g. Netbox `/api/dcim/devices/{{id}}/` → `role.name`).
+Post ops: `trim`, `upper`, `lower`, `replace`, `line`.
 A job only triggers on its website (URL prefix); *URL contains* / *regex* narrow it down further.
+
+### Default configuration
+
+- Label jobs: *I-Doit Inventarlabel*, *Netbox Inventarlabel* (both use the template *Inventarlabel (QR)*),
+  *Inventarlabel (manuell)*, *Textlabel 32×57 mm (manuell)*
+- Label types: inventory label 24×14 mm, Dymo S0722540 57×32 mm, Dymo 14681 round Ø57 mm
+- A default label job (tab *Allgemein*) is preselected when no job matches the current page
 
 ## 📖 Usage
 
@@ -110,7 +120,7 @@ node --test
 ## 🔑 Permissions
 
 - **Storage**: Save extension settings
-- **Active Tab**: Access current I-Doit page
+- **Active Tab / Scripting**: Read the current page (URL, title, `css`/`api` extraction rules)
 - **Host Permissions**: Send ZPL to the printers
 
 ## 📄 License

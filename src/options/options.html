@@ -41,6 +41,15 @@
 
       <section id="general" hidden>
       <div class="section">
+        <h2>Standard-Labeldruck</h2>
+        <div class="form-group">
+          <label for="default-job">Im Popup vorausgewählt, wenn kein Labeldruck zur aktuellen Seite passt</label>
+          <select id="default-job"></select>
+          <small>Nur Labeldrucke ohne Website (manuelle) sind wählbar.</small>
+        </div>
+      </div>
+
+      <div class="section">
         <h2>Vorschau</h2>
         <div class="form-group">
           <label for="preview-api-url">Vorschau-API-URL (Labelary)</label>
@@ -49,11 +58,14 @@
 Leer lassen = keine Vorschau. Hinweis: Der Label-Inhalt wird dabei an diesen Dienst gesendet.</small>
         </div>
         <div class="button-row">
-          <button id="save-general-btn" class="btn btn-primary">Speichern</button>
           <button id="default-preview-btn" class="btn btn-secondary">Standard-URL</button>
           <button id="test-preview-btn" class="btn btn-secondary">Vorschau testen</button>
         </div>
         <div id="preview-test" class="preview-test"></div>
+      </div>
+
+      <div class="button-row">
+        <button id="save-general-btn" class="btn btn-primary">Allgemeine Einstellungen speichern</button>
       </div>
 
       <div class="section">

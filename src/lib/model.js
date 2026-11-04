@@ -4,7 +4,7 @@
 // Library shape:
 // {
 //   schemaVersion: 3,
-//   settings: { previewApiUrl },
+//   settings: { previewApiUrl, defaultJobId },
 //   printers: [{ id, name, url, dpmm, printMethod, darkness, speed }],
 //   formats:  [{ id, name, widthMm, lengthMm, shape, media, sensing, offsetXMm, offsetYMm }],
 //   layouts:  [{ id, name, formatId, dpmm, type: 'zpl', fields: [{ key, label }], zpl }],
@@ -32,7 +32,7 @@ export const LEGACY_DEFAULT_TEMPLATE = `^XA
 // Same layout as the v2 default; ^PW/^LL now come from the label format.
 export const INVENTORY_ZPL = `^XA
 ^CF0,27
-^FO0,10^BQN,2,4^FDQA,{{url}}/?objID={{id}}^FS
+^FO0,10^BQN,2,4^FDQA,{{qr}}^FS
 ^FO145,25^FD{{line1}}^FS
 ^FO145,60^FD{{line2}}^FS
 ^FO145,100^A0N,20,20^FD{{type}}^FS
@@ -43,6 +43,15 @@ export const INVENTORY_ZPL = `^XA
 // the URL-encoded ZPL is appended.
 export const DEFAULT_PREVIEW_URL = 'https://api.labelary.com/v1/printers/{dpmm}dpmm/labels/{widthIn}x{lengthIn}/0/';
 
+// Text label for the Dymo S0722540 (57×32 mm at 12 dpmm = 684×384 dots), no QR code.
+// ^CI28 = UTF-8 (umlauts), ^FB = field block: centred, wraps / clips inside the label.
+export const TEXT_LABEL_ZPL = `^XA
+^CI28
+^FO20,30^A0N,70,70^FB644,1,0,C^FD{{line1}}^FS
+^FO20,130^A0N,50,50^FB644,2,0,C^FD{{line2}}^FS
+^FO20,270^A0N,36,36^FB644,2,0,C^FD{{line3}}^FS
+^XZ`;
+
 export const PRINT_METHODS = ['direct', 'transfer'];
 export const SENSING_MODES = ['', 'gap', 'mark', 'continuous']; // '' = keep printer setting
 export const SHAPES = ['rect', 'round'];
@@ -52,6 +61,12 @@ export function newId(prefix = 'id') {
   const rnd = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `${prefix}-${rnd.slice(0, 8)}`;
 }
+
+const TEXT_FIELDS = [
+  { key: 'line1', label: 'Überschrift' },
+  { key: 'line2', label: 'Zeile 2' },
+  { key: 'line3', label: 'Zeile 3' }
+];
 
 const INVENTORY_FIELDS = [
   { key: 'id', label: 'ID' },
@@ -64,8 +79,22 @@ function idoitExtractRules(idoitUrl, replaceOps) {
   return {
     url: { from: 'const', value: idoitUrl },
     id: { from: 'urlParam', name: 'objID' },
+    qr: { from: 'template', value: '{{url}}/?objID={{id}}' },
     type: { from: 'title', split: ' > ', index: 1, post: replaceOps },
     name: { from: 'title', split: ' > ', index: 2 },
+    line1: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 1 }] },
+    line2: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 2 }] }
+  };
+}
+
+// Netbox device page, e.g. https://netbox.example.com/dcim/devices/123/ ("srv-01 | NetBox").
+// The role comes from the REST API using the user's logged-in session (no token).
+function netboxExtractRules(replaceOps) {
+  return {
+    id: { from: 'urlRegex', pattern: '/dcim/devices/(\\d+)/' },
+    qr: { from: 'urlRegex', pattern: '^([^?#]*/dcim/devices/\\d+/)' },
+    name: { from: 'title', regex: '^(.+?) \\| NetBox' },
+    type: { from: 'api', url: '/api/dcim/devices/{{id}}/', path: 'role.name', post: replaceOps },
     line1: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 1 }] },
     line2: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 2 }] }
   };
@@ -100,17 +129,25 @@ function defaultFormats({ inventoryWidthMm = 23.9, inventoryLengthMm = 14 } = {}
   ];
 }
 
+const NO_TRIGGER = () => ({ urlPrefix: '', urlContains: '', urlRegex: '' });
+
 function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, dpmm, previewApiUrl = DEFAULT_PREVIEW_URL }) {
   const printerId = printers[0].id;
+  // Dymo labels are thermal paper -> prefer the direct thermal printer.
+  const directPrinterId = (printers.find(p => p.printMethod === 'direct') ?? printers[0]).id;
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { previewApiUrl },
+    settings: { previewApiUrl, defaultJobId: 'job-manual-inventory' },
     printers,
     formats,
     layouts: [
       {
         id: 'layout-inventory', name: 'Inventarlabel (QR)', formatId: 'fmt-inventory', dpmm,
         type: 'zpl', fields: INVENTORY_FIELDS.map(f => ({ ...f })), zpl: inventoryZpl
+      },
+      {
+        id: 'layout-text-32x57', name: 'Textlabel 32×57 mm', formatId: 'fmt-dymo-s0722540', dpmm: 12,
+        type: 'zpl', fields: TEXT_FIELDS.map(f => ({ ...f })), zpl: TEXT_LABEL_ZPL
       }
     ],
     jobs: [
@@ -121,10 +158,25 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
         layoutId: 'layout-inventory', printerId
       },
       {
-        id: 'job-manual-inventory', name: 'Inventarlabel (manuell)',
-        trigger: { urlPrefix: '', urlContains: '', urlRegex: '' },
-        extract: { url: { from: 'const', value: idoitUrl } },
+        id: 'job-netbox-inventory', name: 'Netbox Inventarlabel',
+        trigger: { urlPrefix: 'https://netbox.example.com', urlContains: '', urlRegex: '/dcim/devices/\\d+/' },
+        extract: netboxExtractRules(replaceOps),
         layoutId: 'layout-inventory', printerId
+      },
+      {
+        id: 'job-manual-inventory', name: 'Inventarlabel (manuell)',
+        trigger: NO_TRIGGER(),
+        extract: {
+          url: { from: 'const', value: idoitUrl },
+          qr: { from: 'template', value: '{{url}}/?objID={{id}}' }
+        },
+        layoutId: 'layout-inventory', printerId
+      },
+      {
+        id: 'job-manual-text-32x57', name: 'Textlabel 32×57 mm (manuell)',
+        trigger: NO_TRIGGER(),
+        extract: {},
+        layoutId: 'layout-text-32x57', printerId: directPrinterId
       }
     ]
   };
@@ -203,7 +255,7 @@ export function normalizeLibrary(lib) {
   const out = {
     ...lib,
     schemaVersion: SCHEMA_VERSION,
-    settings: { previewApiUrl: DEFAULT_PREVIEW_URL, ...lib.settings }
+    settings: { previewApiUrl: DEFAULT_PREVIEW_URL, defaultJobId: '', ...lib.settings }
   };
   for (const key of ['printers', 'formats', 'layouts', 'jobs']) {
     out[key] = Array.isArray(lib[key]) ? lib[key] : [];

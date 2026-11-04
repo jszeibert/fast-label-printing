@@ -1,7 +1,7 @@
 import { loadLibrary, saveLibrary, sendToPrinter } from '../lib/store.js';
 import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL } from '../lib/model.js';
 import { buildPreviewUrl } from '../lib/preview.js';
-import { extractFields, matchesTrigger } from '../lib/extract.js';
+import { extractFields, matchesTrigger, hasTrigger } from '../lib/extract.js';
 import { mmToDots } from '../lib/zpl.js';
 
 const $ = id => document.getElementById(id);
@@ -23,6 +23,10 @@ const EXTRACT_HELP = `Regeln werden von oben nach unten ausgewertet. Quellen:
   {"from":"urlRegex","pattern":"/devices/(\\\\d+)/"}
   {"from":"title","split":" > ","index":1}  oder {"from":"title","regex":"…"}
   {"from":"field","field":"name"}          Wert eines vorherigen Feldes
+  {"from":"template","value":"{{url}}/?objID={{id}}"}  Text aus vorherigen Feldern
+Auf der Seite (nur im Popup, mit deiner Login-Session):
+  {"from":"css","selector":"h1","attr":"title"}   Text/Attribut eines Elements
+  {"from":"api","url":"/api/dcim/devices/{{id}}/","path":"role.name"}  JSON-API der Seite
 Nachbearbeitung über "post": [{"op":"trim"}, {"op":"upper"}, {"op":"lower"},
   {"op":"replace","search":"Development","replace":"Dev"},
   {"op":"line","maxChars":11,"line":1}]`;
@@ -219,7 +223,8 @@ function renderList() {
   const list = $('entity-list');
   list.replaceChildren();
   for (const item of library[activeTab]) {
-    const li = el('li', { className: item.id === selectedId ? 'active' : '' }, item.name || '(ohne Name)');
+    const star = activeTab === 'jobs' && item.id === library.settings.defaultJobId ? ' ★' : '';
+    const li = el('li', { className: item.id === selectedId ? 'active' : '' }, (item.name || '(ohne Name)') + star);
     li.addEventListener('click', () => { selectedId = item.id; render(); });
     list.append(li);
   }
@@ -234,7 +239,7 @@ function render() {
   $('editor').hidden = isGeneral;
   $('tab-help').textContent = isGeneral ? '' : ENTITIES[activeTab].help;
   if (isGeneral) {
-    $('preview-api-url').value = library.settings.previewApiUrl ?? '';
+    renderGeneral();
     return;
   }
   renderList();
@@ -299,6 +304,7 @@ async function deleteCurrent() {
   if (refs.length) return showStatus(`„${entity.name}“ wird noch verwendet von: ${refs.join(', ')}`, 'error');
   if (!confirm(`„${entity.name}“ wirklich löschen?`)) return;
   library[activeTab] = library[activeTab].filter(item => item.id !== entity.id);
+  if (library.settings.defaultJobId === entity.id) library.settings.defaultJobId = '';
   selectedId = library[activeTab][0]?.id ?? null;
   await persist('Gelöscht.');
 }
@@ -352,7 +358,7 @@ function renderExtractionTester(container) {
   const output = el('pre', { className: 'test-results' });
   const button = el('button', { type: 'button', className: 'btn btn-secondary' }, 'Testen');
 
-  button.addEventListener('click', () => {
+  button.addEventListener('click', async () => {
     let job;
     try {
       job = readForm(byId(library.jobs, selectedId));
@@ -361,7 +367,7 @@ function renderExtractionTester(container) {
       return;
     }
     const page = { url: url.value.trim(), title: title.value };
-    const { values, errors } = extractFields(job.extract, page);
+    const { values, errors } = await extractFields(job.extract, page);
     const triggered = matchesTrigger(job.trigger, page.url);
     output.textContent = [
       job.trigger?.urlPrefix ? `Trigger: ${triggered ? '✅ passt' : '❌ passt nicht'}` : 'Trigger: – (manueller Labeldruck)',
@@ -382,8 +388,20 @@ function renderExtractionTester(container) {
 // General settings
 // ---------------------------------------------------------------------------
 
+function renderGeneral() {
+  $('preview-api-url').value = library.settings.previewApiUrl ?? '';
+  const select = $('default-job');
+  select.replaceChildren(new Option('– keiner (erster manueller Labeldruck) –', ''));
+  for (const job of library.jobs.filter(j => !hasTrigger(j.trigger))) select.append(new Option(job.name, job.id));
+  select.value = byId(library.jobs, library.settings.defaultJobId) ? library.settings.defaultJobId : '';
+}
+
 async function saveGeneral() {
-  library.settings = { ...library.settings, previewApiUrl: $('preview-api-url').value.trim() };
+  library.settings = {
+    ...library.settings,
+    previewApiUrl: $('preview-api-url').value.trim(),
+    defaultJobId: $('default-job').value
+  };
   await persist('Gespeichert.');
 }
 

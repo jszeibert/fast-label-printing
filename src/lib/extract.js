@@ -1,13 +1,20 @@
 // Declarative extraction of label values from the current page.
 //
 // A rule: { from: <source>, ...sourceOptions, post: [<op>, ...] }
-// Sources:  const {value} | urlParam {name} | urlRegex {pattern, group=1}
-//           title {split, index} or {regex, group=1} | field {field} (an earlier key)
+// Sources (evaluated in the extension):
+//   const {value} | urlParam {name} | urlRegex {pattern, group=1}
+//   title {split, index} or {regex, group=1}
+//   field {field}       value of an earlier key
+//   template {value}    text with {{key}} placeholders of earlier keys
+// Sources (evaluated inside the page, popup only):
+//   css {selector, attr?}       text (or attribute) of the first matching element
+//   api {url, path}             GET JSON from the site with the user's session; url may use {{key}}
 // Post ops: trim | upper | lower | replace {search, replace, regex} | line {maxChars, line: 1|2}
 //
-// Rules are evaluated in object order, so `field` can reference keys defined above it.
-// TODO (phase 4): css / meta / api sources evaluated in the page via scripting.executeScript
-// (api uses the user's logged-in session cookies, no API tokens).
+// Rules are evaluated in object order, so `field` / `template` can use keys defined above.
+
+const PAGE_SOURCES = new Set(['css', 'api']);
+const DERIVED_SOURCES = new Set(['field', 'template']);
 
 // A trigger is bound to a website (urlPrefix). urlContains / urlRegex only narrow it down
 // within that site – a regex alone never makes a job trigger.
@@ -28,6 +35,9 @@ export function matchesTrigger(trigger, url) {
   }
   return true;
 }
+
+export const interpolate = (text, values) =>
+  String(text ?? '').replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_, key) => values[key] ?? '');
 
 // Splits a name into two lines at the last break char within maxChars (v2 behaviour).
 export function splitName(name, maxChars = 11) {
@@ -58,6 +68,8 @@ function readSource(rule, page, values) {
       return rule.split ? (page.title || '').split(rule.split)[rule.index ?? 0] : page.title;
     case 'field':
       return values[rule.field];
+    case 'template':
+      return interpolate(rule.value, values);
     default:
       throw new Error(`Unbekannte Quelle „${rule.from}“`);
   }
@@ -79,19 +91,77 @@ function applyOp(op, value) {
   }
 }
 
+const postProcess = (rule, raw) =>
+  (rule.post || []).reduce((value, op) => applyOp(op, value), String(raw ?? ''));
+
 // Returns { values, errors } – a broken rule never stops the other fields.
-export function extractFields(rules, page) {
+// `resolvePage(rule)` evaluates css/api rules inside the page; without it they report an error.
+export async function extractFields(rules, page, resolvePage) {
   const values = {};
   const errors = [];
   for (const [key, rule] of Object.entries(rules || {})) {
     try {
-      let value = String(readSource(rule, page, values) ?? '');
-      for (const op of rule.post || []) value = applyOp(op, value);
-      values[key] = value;
+      let raw;
+      if (PAGE_SOURCES.has(rule.from)) {
+        if (!resolvePage) throw new Error('nur im Popup auf der Seite verfügbar');
+        raw = await resolvePage({ ...rule, url: rule.url && interpolate(rule.url, values) });
+      } else {
+        raw = readSource(rule, page, values);
+      }
+      values[key] = postProcess(rule, raw);
     } catch (error) {
       values[key] = '';
       errors.push(`${key}: ${error.message}`);
     }
   }
   return { values, errors };
+}
+
+// After the user edited fields: recompute derived (field/template) values from the current
+// values, except for keys the user edited directly.
+export function recomputeDerived(rules, values, editedKeys = new Set()) {
+  const out = { ...values };
+  for (const [key, rule] of Object.entries(rules || {})) {
+    if (!DERIVED_SOURCES.has(rule.from) || editedKeys.has(key)) continue;
+    try {
+      out[key] = postProcess(rule, readSource(rule, {}, out));
+    } catch {
+      // keep previous value
+    }
+  }
+  return out;
+}
+
+// Runs inside the web page (via scripting.executeScript) – must be self-contained.
+// Returns { value } or { error }. API responses are cached per page so several fields
+// can read the same object with one request.
+export async function pageExtract(rule) {
+  try {
+    if (rule.from === 'css') {
+      const element = document.querySelector(rule.selector);
+      if (!element) return { value: '' };
+      return { value: rule.attr ? element.getAttribute(rule.attr) ?? '' : element.textContent.trim() };
+    }
+    if (rule.from === 'api') {
+      const url = new URL(rule.url, location.href).href;
+      const cache = (globalThis.__fastLabelApiCache ??= {});
+      cache[url] ??= fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(response => {
+          if (!response.ok) throw new Error(`API ${response.status} ${response.statusText}`);
+          return response.json();
+        });
+      let data;
+      try {
+        data = await cache[url];
+      } catch (error) {
+        delete cache[url];
+        throw error;
+      }
+      const value = String(rule.path || '').split('.').filter(Boolean).reduce((obj, key) => obj?.[key], data);
+      return { value: value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value) };
+    }
+    return { error: `Unbekannte Seiten-Quelle „${rule.from}“` };
+  } catch (error) {
+    return { error: error.message };
+  }
 }

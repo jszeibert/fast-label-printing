@@ -1,15 +1,16 @@
 import { browserAPI } from '../lib/browser.js';
 import { loadLibrary, sendToPrinter } from '../lib/store.js';
 import { byId } from '../lib/model.js';
-import { hasTrigger, matchesTrigger, extractFields } from '../lib/extract.js';
+import { hasTrigger, matchesTrigger, extractFields, recomputeDerived, pageExtract } from '../lib/extract.js';
 import { compileLabel, checkCompatibility } from '../lib/zpl.js';
 import { buildPreviewUrl } from '../lib/preview.js';
 
 const $ = id => document.getElementById(id);
 
 let library;
-let page = { url: '', title: '' };
-let current = null; // { job, layout, format, values }
+let page = { url: '', title: '', tabId: null };
+let current = null; // { job, layout, format, values, edited }
+let selectToken = 0;
 let zpl = '';
 
 function setStatus(message, type = 'info') {
@@ -25,7 +26,10 @@ function addOptions(select, items, label) {
   if (!items.length) return;
   const group = document.createElement('optgroup');
   group.label = label;
-  for (const item of items) group.append(new Option(item.name, item.id));
+  for (const item of items) {
+    const star = item.id === library.settings.defaultJobId ? ' ★' : '';
+    group.append(new Option(item.name + star, item.id));
+  }
   select.append(group);
 }
 
@@ -37,7 +41,22 @@ function availableJobs() {
   };
 }
 
-function selectJob(jobId) {
+// Evaluates css/api rules inside the current tab (uses the user's logged-in session).
+async function resolvePage(rule) {
+  if (page.tabId == null) throw new Error('kein Tab');
+  const [injection] = await browserAPI.scripting.executeScript({
+    target: { tabId: page.tabId },
+    func: pageExtract,
+    args: [rule]
+  });
+  const result = injection?.result;
+  if (!result) throw new Error('keine Antwort von der Seite');
+  if (result.error) throw new Error(result.error);
+  return result.value;
+}
+
+async function selectJob(jobId) {
+  const token = ++selectToken;
   const job = byId(library.jobs, jobId);
   const layout = byId(library.layouts, job?.layoutId);
   const format = byId(library.formats, layout?.formatId);
@@ -47,8 +66,12 @@ function selectJob(jobId) {
     return setStatus('Labeldruck unvollständig: Layout oder Format fehlt.', 'error');
   }
 
-  const { values, errors } = extractFields(job.extract, page);
-  current = { job, layout, format, values };
+  // Page sources only run for jobs bound to this page.
+  const onPage = matchesTrigger(job.trigger, page.url);
+  setStatus('Daten werden gelesen …', 'loading');
+  const { values, errors } = await extractFields(job.extract, page, onPage ? resolvePage : undefined);
+  if (token !== selectToken) return; // another job was selected meanwhile
+  current = { job, layout, format, values, edited: new Set() };
 
   if (byId(library.printers, job.printerId)) $('printer-select').value = job.printerId;
   $('format-info').textContent =
@@ -116,10 +139,22 @@ function renderFields() {
     input.value = current.values[field.key] ?? '';
     input.addEventListener('input', () => {
       current.values[field.key] = input.value;
+      current.edited.add(field.key);
+      current.values = recomputeDerived(current.job.extract, current.values, current.edited);
+      syncInputs(field.key);
       update();
     });
     wrapper.append(label, input);
     container.append(wrapper);
+  }
+}
+
+// Show recomputed derived values in the other inputs.
+function syncInputs(exceptKey) {
+  for (const field of current.layout.fields || []) {
+    if (field.key === exceptKey) continue;
+    const input = $(`field-${field.key}`);
+    if (input) input.value = current.values[field.key] ?? '';
   }
 }
 
@@ -175,7 +210,7 @@ async function init() {
   }
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-  page = { url: tab?.url || '', title: tab?.title || '' };
+  page = { url: tab?.url || '', title: tab?.title || '', tabId: tab?.id ?? null };
 
   const { matched, manual } = availableJobs();
   if (!matched.length && !manual.length) {
@@ -196,7 +231,11 @@ async function init() {
   $('print-btn').addEventListener('click', print);
 
   $('main').hidden = false;
-  selectJob((matched[0] ?? manual[0]).id);
+  // Matching job first; otherwise the default job (if it is a manual one); else first manual.
+  const defaultJob = manual.find(job => job.id === library.settings.defaultJobId);
+  const initial = matched[0] ?? defaultJob ?? manual[0];
+  jobSelect.value = initial.id;
+  selectJob(initial.id);
 }
 
 document.addEventListener('DOMContentLoaded', init);
