@@ -26,3 +26,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Internal configuration (real hosts/IPs) – never commit
+local/
