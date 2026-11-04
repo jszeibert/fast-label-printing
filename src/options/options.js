@@ -50,9 +50,10 @@ const ENTITIES = {
   formats: {
     help: 'Physische Etiketten. Breite/Länge ergeben ^PW/^LL – sie stehen nicht mehr im Template.',
     prefix: 'fmt',
-    create: () => ({ name: 'Neuer Labeltyp', widthMm: 50, lengthMm: 25, shape: 'rect', media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 }),
+    create: () => ({ name: 'Neuer Labeltyp', articleNo: '', widthMm: 50, lengthMm: 25, shape: 'rect', media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 }),
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
+      { key: 'articleNo', label: 'Artikelnummer(n)', type: 'text', placeholder: 'z. B. 3052929', help: 'Nur zur Info, z. B. für Nachbestellungen.' },
       { key: 'widthMm', label: 'Breite (mm, quer zum Druckkopf)', type: 'number', step: 0.1, min: 1 },
       { key: 'lengthMm', label: 'Länge (mm, in Laufrichtung)', type: 'number', step: 0.1, min: 1 },
       { key: 'shape', label: 'Form', type: 'select', options: () => [['rect', 'Rechteckig'], ['round', 'Rund']] },

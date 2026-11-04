@@ -46,7 +46,7 @@ test('migrates v2 settings with unchanged default template', () => {
   assert.equal(lib.printers[0].dpmm, 8);
   assert.equal(lib.layouts[0].zpl, INVENTORY_ZPL);
   assert.equal(lib.layouts[0].dpmm, 8);
-  assert.equal(byId(lib.formats, 'fmt-inventory').widthMm, 23.9);
+  assert.equal(byId(lib.formats, 'fmt-inventory').widthMm, 25);
   const job = byId(lib.jobs, 'job-idoit-inventory');
   assert.equal(job.trigger.urlPrefix, 'https://idoit.corp');
   assert.equal(job.extract.url.value, 'https://idoit.corp');

@@ -6,7 +6,7 @@
 //   schemaVersion: 3,
 //   settings: { previewApiUrl, defaultJobId },
 //   printers: [{ id, name, url, dpmm, printMethod, darkness, speed }],
-//   formats:  [{ id, name, widthMm, lengthMm, shape, media, sensing, offsetXMm, offsetYMm }],
+//   formats:  [{ id, name, articleNo, widthMm, lengthMm, shape, media, sensing, offsetXMm, offsetYMm }],
 //   layouts:  [{ id, name, formatId, dpmm, type: 'zpl', fields: [{ key, label }], zpl }],
 //   jobs:     [{ id, name, trigger: { urlPrefix, urlContains, urlRegex }, extract: {...},
 //                layoutId, printerId }]
@@ -109,20 +109,21 @@ export function parseReplaceList(list) {
     .map(([search, replace]) => ({ op: 'replace', search: search.trim(), replace: replace.trim(), regex: true }));
 }
 
-function defaultFormats({ inventoryWidthMm = 23.9, inventoryLengthMm = 14 } = {}) {
+function defaultFormats() {
   return [
     {
-      id: 'fmt-inventory', name: `Inventarlabel ${Math.round(inventoryWidthMm)}×${Math.round(inventoryLengthMm)} mm`,
-      widthMm: inventoryWidthMm, lengthMm: inventoryLengthMm, shape: 'rect', media: 'any',
+      // Same size exists as direct thermal (etiketten.shop 3052929) and thermal transfer roll.
+      id: 'fmt-inventory', name: 'Inventarlabel 25×14 mm', articleNo: '3052929 (Thermodirekt)',
+      widthMm: 25, lengthMm: 14, shape: 'rect', media: 'any',
       sensing: '', offsetXMm: 0, offsetYMm: 0
     },
     {
-      id: 'fmt-dymo-s0722540', name: 'Dymo S0722540 57×32 mm',
+      id: 'fmt-dymo-s0722540', name: 'Dymo S0722540 57×32 mm', articleNo: 'S0722540',
       widthMm: 57, lengthMm: 32, shape: 'rect', media: 'direct',
       sensing: '', offsetXMm: 0, offsetYMm: 0
     },
     {
-      id: 'fmt-dymo-14681', name: 'Dymo 14681 rund Ø57 mm',
+      id: 'fmt-dymo-14681', name: 'Dymo 14681 rund Ø57 mm', articleNo: '14681',
       widthMm: 57, lengthMm: 57, shape: 'round', media: 'direct',
       sensing: '', offsetXMm: 0, offsetYMm: 0
     }
@@ -203,16 +204,10 @@ export function convertLegacyPlaceholders(zpl) {
   return zpl.replace(/\{(URL|ID|LINE1|LINE2|TYPE)\}/gi, (_, key) => `{{${key.toLowerCase()}}}`);
 }
 
-// Labelary URL e.g. http://api.labelary.com/v1/printers/12dpmm/labels/0.94x0.55/0/
+// Printer resolution from the v2 Labelary URL, e.g. …/printers/12dpmm/labels/0.94x0.55/0/
+// (the label size in that URL was only approximate – the real size comes from the defaults).
 function parsePreviewUrl(url) {
-  const dpmm = Number(/\/(\d+)dpmm\//.exec(url || '')?.[1]) || 12;
-  const size = /\/labels\/([\d.]+)x([\d.]+)\//.exec(url || '');
-  const toMm = inch => Math.round(Number(inch) * 25.4 * 10) / 10;
-  return {
-    dpmm,
-    widthMm: size ? toMm(size[1]) : 23.9,
-    lengthMm: size ? toMm(size[2]) : 14
-  };
+  return { dpmm: Number(/\/(\d+)dpmm\//.exec(url || '')?.[1]) || 12 };
 }
 
 // Turns the fixed v2 preview URL into a template, keeping a custom host.
@@ -227,7 +222,7 @@ export function previewUrlToTemplate(url) {
 // Converts the flat v2 settings into a v3 library.
 export function migrateFromV2(old) {
   const idoitUrl = (old['idoit-base-url'] || 'https://idoit.example.com').replace(/\/+$/, '');
-  const { dpmm, widthMm, lengthMm } = parsePreviewUrl(old['preview-api-url']);
+  const { dpmm } = parsePreviewUrl(old['preview-api-url']);
   const template = old['zpl-template'];
   const inventoryZpl = !template || normalizeNewlines(template) === normalizeNewlines(LEGACY_DEFAULT_TEMPLATE)
     ? INVENTORY_ZPL
@@ -237,7 +232,7 @@ export function migrateFromV2(old) {
     printers: [
       { id: 'printer-1', name: 'Zebra (aus v2 übernommen)', url: old['printer-url'] || '', dpmm, printMethod: 'direct', darkness: null, speed: null }
     ],
-    formats: defaultFormats({ inventoryWidthMm: widthMm, inventoryLengthMm: lengthMm }),
+    formats: defaultFormats(),
     inventoryZpl,
     idoitUrl,
     replaceOps: parseReplaceList(old['replace-list']),
