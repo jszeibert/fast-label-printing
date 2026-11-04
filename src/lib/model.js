@@ -43,13 +43,15 @@ export const INVENTORY_ZPL = `^XA
 // the URL-encoded ZPL is appended.
 export const DEFAULT_PREVIEW_URL = 'https://api.labelary.com/v1/printers/{dpmm}dpmm/labels/{widthIn}x{lengthIn}/0/';
 
-// Text label for the Dymo S0722540 (57×32 mm at 12 dpmm = 684×384 dots), no QR code.
+// Text label for box labels, 50×75 mm (50 mm across the head, 75 mm feed direction;
+// 12 dpmm = 590×886 dots), no QR code.
 // ^CI28 = UTF-8 (umlauts), ^FB = field block: centred, wraps / clips inside the label.
 export const TEXT_LABEL_ZPL = `^XA
 ^CI28
-^FO20,30^A0N,70,70^FB644,1,0,C^FD{{line1}}^FS
-^FO20,130^A0N,50,50^FB644,2,0,C^FD{{line2}}^FS
-^FO20,270^A0N,36,36^FB644,2,0,C^FD{{line3}}^FS
+^FO25,40^A0N,90,90^FB540,2,0,C^FD{{line1}}^FS
+^FO25,250^GB540,4,4^FS
+^FO25,290^A0N,60,60^FB540,3,0,C^FD{{line2}}^FS
+^FO25,520^A0N,45,45^FB540,6,0,C^FD{{line3}}^FS
 ^XZ`;
 
 export const PRINT_METHODS = ['direct', 'transfer'];
@@ -118,6 +120,12 @@ function defaultFormats() {
       sensing: '', offsetXMm: 0, offsetYMm: 0
     },
     {
+      // Box / text labels on the thermal transfer printer.
+      id: 'fmt-text-50x75', name: 'Textlabel 50×75 mm', articleNo: '',
+      widthMm: 50, lengthMm: 75, shape: 'rect', media: 'any',
+      sensing: '', offsetXMm: 0, offsetYMm: 0
+    },
+    {
       id: 'fmt-dymo-s0722540', name: 'Dymo S0722540 57×32 mm', articleNo: 'S0722540',
       widthMm: 57, lengthMm: 32, shape: 'rect', media: 'direct',
       sensing: '', offsetXMm: 0, offsetYMm: 0
@@ -134,8 +142,8 @@ const NO_TRIGGER = () => ({ urlPrefix: '', urlContains: '', urlRegex: '' });
 
 function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, dpmm, previewApiUrl = DEFAULT_PREVIEW_URL }) {
   const printerId = printers[0].id;
-  // Dymo labels are thermal paper -> prefer the direct thermal printer.
-  const directPrinterId = (printers.find(p => p.printMethod === 'direct') ?? printers[0]).id;
+  // Text labels go to the second printer if there is one.
+  const textPrinterId = (printers[1] ?? printers[0]).id;
   return {
     schemaVersion: SCHEMA_VERSION,
     settings: { previewApiUrl, defaultJobId: 'job-manual-inventory' },
@@ -147,7 +155,7 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
         type: 'zpl', fields: INVENTORY_FIELDS.map(f => ({ ...f })), zpl: inventoryZpl
       },
       {
-        id: 'layout-text-32x57', name: 'Textlabel 32×57 mm', formatId: 'fmt-dymo-s0722540', dpmm: 12,
+        id: 'layout-text-50x75', name: 'Textlabel 50×75 mm', formatId: 'fmt-text-50x75', dpmm: 12,
         type: 'zpl', fields: TEXT_FIELDS.map(f => ({ ...f })), zpl: TEXT_LABEL_ZPL
       }
     ],
@@ -174,10 +182,10 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
         layoutId: 'layout-inventory', printerId
       },
       {
-        id: 'job-manual-text-32x57', name: 'Textlabel 32×57 mm (manuell)',
+        id: 'job-manual-text-50x75', name: 'Textlabel 50×75 mm (manuell)',
         trigger: NO_TRIGGER(),
         extract: {},
-        layoutId: 'layout-text-32x57', printerId: directPrinterId
+        layoutId: 'layout-text-50x75', printerId: textPrinterId
       }
     ]
   };
@@ -186,8 +194,8 @@ function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, d
 export function createDefaultLibrary() {
   return buildLibrary({
     printers: [
-      { id: 'printer-dt', name: 'Zebra Thermodirekt', url: 'http://zebra-dt.example.local/pstprnt', dpmm: 12, printMethod: 'direct', darkness: null, speed: null },
-      { id: 'printer-tt', name: 'Zebra Thermotransfer', url: 'http://zebra-tt.example.local/pstprnt', dpmm: 12, printMethod: 'transfer', darkness: null, speed: null }
+      { id: 'printer-inventory', name: 'Zebra Inventarlabel (Thermotransfer)', url: 'http://zebra-inventory.example.local/pstprnt', dpmm: 12, printMethod: 'transfer', darkness: null, speed: null },
+      { id: 'printer-text', name: 'Zebra Textlabel (Thermotransfer)', url: 'http://zebra-text.example.local/pstprnt', dpmm: 12, printMethod: 'transfer', darkness: null, speed: null }
     ],
     formats: defaultFormats(),
     inventoryZpl: INVENTORY_ZPL,

@@ -17,19 +17,20 @@ test('default library is consistent and contains the Dymo formats', () => {
   const lib = createDefaultLibrary();
   assertConsistent(lib);
   assert.equal(lib.printers.length, 2);
-  assert.deepEqual(lib.formats.map(f => f.id), ['fmt-inventory', 'fmt-dymo-s0722540', 'fmt-dymo-14681']);
+  assert.deepEqual(lib.formats.map(f => f.id), ['fmt-inventory', 'fmt-text-50x75', 'fmt-dymo-s0722540', 'fmt-dymo-14681']);
   assert.equal(byId(lib.formats, 'fmt-dymo-14681').shape, 'round');
   assert.ok(byId(lib.jobs, lib.settings.defaultJobId));
 });
 
-test('default jobs: I-Doit, Netbox and manual inventory share the QR layout; text label on Dymo', () => {
+test('default jobs: I-Doit, Netbox and manual inventory share the QR layout; text label 50x75 on the second printer', () => {
   const lib = createDefaultLibrary();
   for (const id of ['job-idoit-inventory', 'job-netbox-inventory', 'job-manual-inventory']) {
     assert.equal(byId(lib.jobs, id).layoutId, 'layout-inventory');
   }
-  const text = byId(lib.jobs, 'job-manual-text-32x57');
-  assert.equal(byId(lib.layouts, text.layoutId).formatId, 'fmt-dymo-s0722540');
-  assert.equal(byId(lib.printers, text.printerId).printMethod, 'direct');
+  const text = byId(lib.jobs, 'job-manual-text-50x75');
+  assert.equal(byId(lib.layouts, text.layoutId).formatId, 'fmt-text-50x75');
+  assert.equal(text.printerId, lib.printers[1].id);
+  assert.notEqual(text.printerId, byId(lib.jobs, 'job-manual-inventory').printerId);
   assert.match(byId(lib.layouts, 'layout-inventory').zpl, /\{\{qr\}\}/);
 });
 

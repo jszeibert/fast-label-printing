@@ -63,7 +63,7 @@ A job only triggers on its website (URL prefix); *URL contains* / *regex* narrow
 ### Default configuration
 
 - Label jobs: *I-Doit Inventarlabel*, *Netbox Inventarlabel* (both use the template *Inventarlabel (QR)*),
-  *Inventarlabel (manuell)*, *Textlabel 32×57 mm (manuell)*
+  *Inventarlabel (manuell)*, *Textlabel 50×75 mm (manuell)*
 - Label types: inventory label 24×14 mm, Dymo S0722540 57×32 mm, Dymo 14681 round Ø57 mm
 - A default label job (tab *Allgemein*) is preselected when no job matches the current page
 
