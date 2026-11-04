@@ -1,0 +1,225 @@
+// Data model (schema v3) for printers, label formats, layouts and print jobs.
+// Pure functions only – no browser APIs – so everything here is unit-testable.
+//
+// Library shape:
+// {
+//   schemaVersion: 3,
+//   settings: { previewApiUrl },
+//   printers: [{ id, name, url, dpmm, printMethod, darkness, speed }],
+//   formats:  [{ id, name, widthMm, lengthMm, shape, media, sensing, offsetXMm, offsetYMm }],
+//   layouts:  [{ id, name, formatId, dpmm, type: 'zpl', fields: [{ key, label }], zpl }],
+//   jobs:     [{ id, name, trigger: { urlPrefix, urlContains, urlRegex }, extract: {...},
+//                layoutId, printerId }]
+// }
+
+export const SCHEMA_VERSION = 3;
+
+// Storage keys used by v2 (single flat settings).
+export const LEGACY_KEYS = ['idoit-base-url', 'zpl-template', 'preview-api-url', 'replace-list', 'printer-url'];
+
+// The default template shipped with v2 – used to detect "unchanged" templates during migration.
+export const LEGACY_DEFAULT_TEMPLATE = `^XA
+^PW280          ; Set print width (1.00 in)
+^LL164          ; Set label length (0.50 in)
+^CF0,27
+^FO0,10^BQN,2,4^FDQA,{URL}/?objID={ID}^FS
+^FO145,25^FD{LINE1}^FS
+^FO145,60^FD{LINE2}^FS
+^FO145,100^A0N,20,20^FD{TYPE}^FS
+^FO145,130^A0N,27,27^FD{ID}^FS
+^XZ`;
+
+// Same layout as the v2 default; ^PW/^LL now come from the label format.
+export const INVENTORY_ZPL = `^XA
+^CF0,27
+^FO0,10^BQN,2,4^FDQA,{{url}}/?objID={{id}}^FS
+^FO145,25^FD{{line1}}^FS
+^FO145,60^FD{{line2}}^FS
+^FO145,100^A0N,20,20^FD{{type}}^FS
+^FO145,130^A0N,27,27^FD{{id}}^FS
+^XZ`;
+
+// Labelary-compatible preview endpoint. {dpmm}, {widthIn}, {lengthIn} are filled per label;
+// the URL-encoded ZPL is appended.
+export const DEFAULT_PREVIEW_URL = 'https://api.labelary.com/v1/printers/{dpmm}dpmm/labels/{widthIn}x{lengthIn}/0/';
+
+export const PRINT_METHODS = ['direct', 'transfer'];
+export const SENSING_MODES = ['', 'gap', 'mark', 'continuous']; // '' = keep printer setting
+export const SHAPES = ['rect', 'round'];
+export const MEDIA = ['any', 'direct']; // 'direct' = thermal paper, needs a direct-thermal printer
+
+export function newId(prefix = 'id') {
+  const rnd = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return `${prefix}-${rnd.slice(0, 8)}`;
+}
+
+const INVENTORY_FIELDS = [
+  { key: 'id', label: 'ID' },
+  { key: 'type', label: 'Typ' },
+  { key: 'line1', label: 'Zeile 1' },
+  { key: 'line2', label: 'Zeile 2' }
+];
+
+function idoitExtractRules(idoitUrl, replaceOps) {
+  return {
+    url: { from: 'const', value: idoitUrl },
+    id: { from: 'urlParam', name: 'objID' },
+    type: { from: 'title', split: ' > ', index: 1, post: replaceOps },
+    name: { from: 'title', split: ' > ', index: 2 },
+    line1: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 1 }] },
+    line2: { from: 'field', field: 'name', post: [{ op: 'line', maxChars: 11, line: 2 }] }
+  };
+}
+
+// "Development=Dev,Temperature=Temp." -> replace ops (v2 treated search terms as regex).
+export function parseReplaceList(list) {
+  if (!list) return [];
+  return list.split(',')
+    .map(pair => pair.split('='))
+    .filter(parts => parts.length === 2 && parts[0].trim())
+    .map(([search, replace]) => ({ op: 'replace', search: search.trim(), replace: replace.trim(), regex: true }));
+}
+
+function defaultFormats({ inventoryWidthMm = 23.9, inventoryLengthMm = 14 } = {}) {
+  return [
+    {
+      id: 'fmt-inventory', name: `Inventarlabel ${Math.round(inventoryWidthMm)}×${Math.round(inventoryLengthMm)} mm`,
+      widthMm: inventoryWidthMm, lengthMm: inventoryLengthMm, shape: 'rect', media: 'any',
+      sensing: '', offsetXMm: 0, offsetYMm: 0
+    },
+    {
+      id: 'fmt-dymo-s0722540', name: 'Dymo S0722540 57×32 mm',
+      widthMm: 57, lengthMm: 32, shape: 'rect', media: 'direct',
+      sensing: '', offsetXMm: 0, offsetYMm: 0
+    },
+    {
+      id: 'fmt-dymo-14681', name: 'Dymo 14681 rund Ø57 mm',
+      widthMm: 57, lengthMm: 57, shape: 'round', media: 'direct',
+      sensing: '', offsetXMm: 0, offsetYMm: 0
+    }
+  ];
+}
+
+function buildLibrary({ printers, formats, inventoryZpl, idoitUrl, replaceOps, dpmm, previewApiUrl = DEFAULT_PREVIEW_URL }) {
+  const printerId = printers[0].id;
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    settings: { previewApiUrl },
+    printers,
+    formats,
+    layouts: [
+      {
+        id: 'layout-inventory', name: 'Inventarlabel (QR)', formatId: 'fmt-inventory', dpmm,
+        type: 'zpl', fields: INVENTORY_FIELDS.map(f => ({ ...f })), zpl: inventoryZpl
+      }
+    ],
+    jobs: [
+      {
+        id: 'job-idoit-inventory', name: 'I-Doit Inventarlabel',
+        trigger: { urlPrefix: idoitUrl, urlContains: 'objID', urlRegex: '' },
+        extract: idoitExtractRules(idoitUrl, replaceOps),
+        layoutId: 'layout-inventory', printerId
+      },
+      {
+        id: 'job-manual-inventory', name: 'Inventarlabel (manuell)',
+        trigger: { urlPrefix: '', urlContains: '', urlRegex: '' },
+        extract: { url: { from: 'const', value: idoitUrl } },
+        layoutId: 'layout-inventory', printerId
+      }
+    ]
+  };
+}
+
+export function createDefaultLibrary() {
+  return buildLibrary({
+    printers: [
+      { id: 'printer-dt', name: 'Zebra Thermodirekt', url: 'http://zebra-dt.example.local/pstprnt', dpmm: 12, printMethod: 'direct', darkness: null, speed: null },
+      { id: 'printer-tt', name: 'Zebra Thermotransfer', url: 'http://zebra-tt.example.local/pstprnt', dpmm: 12, printMethod: 'transfer', darkness: null, speed: null }
+    ],
+    formats: defaultFormats(),
+    inventoryZpl: INVENTORY_ZPL,
+    idoitUrl: 'https://idoit.example.com',
+    replaceOps: parseReplaceList('Development=Dev,Temperature=Temp.'),
+    dpmm: 12
+  });
+}
+
+const normalizeNewlines = s => (s || '').replace(/\r\n/g, '\n').trim();
+
+// {URL} {ID} {LINE1} {LINE2} {TYPE} -> {{url}} ...
+export function convertLegacyPlaceholders(zpl) {
+  return zpl.replace(/\{(URL|ID|LINE1|LINE2|TYPE)\}/gi, (_, key) => `{{${key.toLowerCase()}}}`);
+}
+
+// Labelary URL e.g. http://api.labelary.com/v1/printers/12dpmm/labels/0.94x0.55/0/
+function parsePreviewUrl(url) {
+  const dpmm = Number(/\/(\d+)dpmm\//.exec(url || '')?.[1]) || 12;
+  const size = /\/labels\/([\d.]+)x([\d.]+)\//.exec(url || '');
+  const toMm = inch => Math.round(Number(inch) * 25.4 * 10) / 10;
+  return {
+    dpmm,
+    widthMm: size ? toMm(size[1]) : 23.9,
+    lengthMm: size ? toMm(size[2]) : 14
+  };
+}
+
+// Turns the fixed v2 preview URL into a template, keeping a custom host.
+export function previewUrlToTemplate(url) {
+  if (!url) return DEFAULT_PREVIEW_URL;
+  return url
+    .replace(/^http:\/\/api\.labelary\.com\//, 'https://api.labelary.com/') // Labelary is https-only now
+    .replace(/\/\d+dpmm\//, '/{dpmm}dpmm/')
+    .replace(/\/labels\/[\d.]+x[\d.]+\//, '/labels/{widthIn}x{lengthIn}/');
+}
+
+// Converts the flat v2 settings into a v3 library.
+export function migrateFromV2(old) {
+  const idoitUrl = (old['idoit-base-url'] || 'https://idoit.example.com').replace(/\/+$/, '');
+  const { dpmm, widthMm, lengthMm } = parsePreviewUrl(old['preview-api-url']);
+  const template = old['zpl-template'];
+  const inventoryZpl = !template || normalizeNewlines(template) === normalizeNewlines(LEGACY_DEFAULT_TEMPLATE)
+    ? INVENTORY_ZPL
+    : convertLegacyPlaceholders(template); // custom template: keep as-is (its own ^PW/^LL still win)
+
+  return buildLibrary({
+    printers: [
+      { id: 'printer-1', name: 'Zebra (aus v2 übernommen)', url: old['printer-url'] || '', dpmm, printMethod: 'direct', darkness: null, speed: null }
+    ],
+    formats: defaultFormats({ inventoryWidthMm: widthMm, inventoryLengthMm: lengthMm }),
+    inventoryZpl,
+    idoitUrl,
+    replaceOps: parseReplaceList(old['replace-list']),
+    dpmm,
+    previewApiUrl: previewUrlToTemplate(old['preview-api-url'])
+  });
+}
+
+// Makes sure a library loaded from storage/import has all collections.
+export function normalizeLibrary(lib) {
+  if (!lib || typeof lib !== 'object') throw new Error('Ungültige Library');
+  if (lib.schemaVersion > SCHEMA_VERSION) {
+    throw new Error(`Library-Version ${lib.schemaVersion} ist neuer als diese Extension (${SCHEMA_VERSION})`);
+  }
+  const out = {
+    ...lib,
+    schemaVersion: SCHEMA_VERSION,
+    settings: { previewApiUrl: DEFAULT_PREVIEW_URL, ...lib.settings }
+  };
+  for (const key of ['printers', 'formats', 'layouts', 'jobs']) {
+    out[key] = Array.isArray(lib[key]) ? lib[key] : [];
+  }
+  return out;
+}
+
+export const byId = (list, id) => list.find(item => item.id === id);
+
+// Which entities reference the given entity? Used to block deleting things still in use.
+export function findReferences(lib, collection, id) {
+  const refs = {
+    printers: () => lib.jobs.filter(j => j.printerId === id),
+    formats: () => lib.layouts.filter(l => l.formatId === id),
+    layouts: () => lib.jobs.filter(j => j.layoutId === id),
+    jobs: () => []
+  };
+  return (refs[collection]?.() ?? []).map(item => item.name);
+}
