@@ -1,73 +1,64 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <header class="popup-header">
-      <h3>🏷️ Fast Label Printer</h3>
-      <button id="options-btn" class="options-btn" title="Open Settings">⚙️</button>
-    </header>
-    
-    <!-- Main content -->
-    <div id="main-content">
-      <!-- Preview und Print zuerst -->
-      <div id="label-preview" class="preview-container"></div>
-      
-      <div class="button-group">
-        <button id="print-btn" class="print-btn">🖨️ Print Label</button>
+  <header class="popup-header">
+    <h3>🏷️ Fast Label Printer</h3>
+    <button id="options-btn" class="icon-btn" title="Settings">⚙️</button>
+  </header>
+
+  <main id="main" hidden>
+    <div class="row">
+      <label for="job-select">Label job</label>
+      <div class="select-row">
+        <select id="job-select"></select>
+        <button id="default-job-btn" class="star-btn" type="button">☆</button>
       </div>
-      
-      <!-- Form kompakter unten -->
-      <div class="info-form">
-        <div class="form-row">
-          <div class="input-group">
-            <label for="id">ID:</label>
-            <input type="text" id="id" placeholder="Object ID">
-          </div>
-          <div class="input-group">
-            <label for="type">Type:</label>
-            <input type="text" id="type" placeholder="Object type">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="input-group">
-            <label for="line1">Line 1:</label>
-            <input type="text" id="line1" placeholder="First line">
-          </div>
-          <div class="input-group">
-            <label for="line2">Line 2:</label>
-            <input type="text" id="line2" placeholder="Second line">
-          </div>
-        </div>
-        <button id="update-preview-btn" class="update-btn">Update Preview</button>
-      </div>
-      
-      <div id="status" class="status"></div>
     </div>
-    
-    <!-- Hidden Templates -->
-    <template id="settings-required-template">
-      <div class="settings-required-message message-container">
-        <h3>⚙️ Settings Required</h3>
-        <p><strong>Please configure the required settings first.</strong></p>
-        <p><em>Some essential settings are missing.</em></p>
-        <button id="open-settings-btn" class="settings-btn btn-base">Open Settings</button>
+
+    <div id="preview" class="preview">
+      <img id="preview-img" alt="Label preview" hidden>
+      <span id="preview-msg" class="preview-msg">Loading preview …</span>
+    </div>
+    <div id="format-info" class="format-info"></div>
+    <div id="fields" class="fields"></div>
+    <button id="clear-fields-btn" class="clear-btn" hidden>🗑️ Clear inputs</button>
+
+    <div class="row two">
+      <div>
+        <label for="printer-select">Printer</label>
+        <div class="select-row">
+          <select id="printer-select"></select>
+          <button id="default-printer-btn" class="star-btn" type="button">☆</button>
+        </div>
       </div>
-    </template>
-    
-    <template id="not-idoit-template">
-      <div class="not-idoit-message message-container">
-        <h3>🏷️ Fast Label Printer</h3>
-        <p><strong>This extension works only on I-Doit object pages.</strong></p>
-        <p>Please navigate to an I-Doit object page that contains <code>objID=</code> in the URL.</p>
-        <p><em>Current URL does not match your configured I-Doit URL.</em></p>
-        <button id="options-link-inline" class="options-link btn-base">⚙️ Check Settings</button>
+      <div class="copies">
+        <label for="copies">Copies</label>
+        <input id="copies" type="number" min="1" max="999" value="1">
       </div>
-    </template>
+    </div>
+
+    <ul id="warnings" class="warnings"></ul>
+
+    <button id="print-btn" class="print-btn">🖨️ Print</button>
+
+    <details class="zpl-details">
+      <summary>Show ZPL</summary>
+      <pre id="zpl-output"></pre>
+    </details>
+  </main>
+
+  <div id="empty" class="message" hidden>
+    <p><strong>No label job available.</strong></p>
+    <p>There is no label job for this page and no manual label job.</p>
+    <button id="empty-settings-btn" class="btn">⚙️ Open settings</button>
   </div>
-  <script src="popup.js"></script>
+
+  <div id="status" class="status"></div>
+
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         
     - name: Install web-ext
       run: npm install -g web-ext
@@ -82,13 +82,14 @@ jobs:
     - name: Test JavaScript Syntax
       run: |
         echo "🔍 Checking JavaScript syntax..."
-        
-        # Simple syntax check with Node.js
-        for file in src/popup/popup.js src/options/options.js; do
-          if [ -f "$file" ]; then
-            echo "Checking $file..."
-            node -c "$file" || exit 1
-          fi
+        for file in $(find src -name '*.js'); do
+          echo "Checking $file..."
+          node --check "$file" || exit 1
         done
-        
         echo "✅ JavaScript syntax is valid"
+
+    - name: Unit Tests
+      run: node --test
+
+    - name: Lint Extension
+      run: web-ext lint --self-hosted --source-dir=src

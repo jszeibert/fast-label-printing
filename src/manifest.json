@@ -1,19 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "fast-label-printering",
-  "description": "Print Inventory labels from IDoit using ZPL on Zebra printers", 
-  "version": "2.0",
+  "name": "fast-label-printing",
+  "description": "Print labels (ZPL) on Zebra printers from web pages like I-Doit or manually",
+  "version": "3.0",
   "browser_specific_settings": {
     "gecko": {
-      "id": "fast-label-printering@jszeibert.github.io",
-      "update_url": "https://jszeibert.github.io/fast-label-printering/update.json"
+      "id": "fast-label-printing@jszeibert.github.io",
+      "update_url": "https://jszeibert.github.io/fast-label-printing/update.json"
     }
   },
   "permissions": [
     "storage",
-    "tabs", 
+    "tabs",
     "activeTab",
-    "webRequest"
+    "scripting"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self';"
