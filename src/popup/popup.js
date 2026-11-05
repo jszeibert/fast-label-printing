@@ -1,5 +1,5 @@
 import { browserAPI } from '../lib/browser.js';
-import { loadLibrary, sendToPrinter } from '../lib/store.js';
+import { loadLibrary, saveLibrary, sendToPrinter } from '../lib/store.js';
 import { byId } from '../lib/model.js';
 import { hasTrigger, matchesTrigger, extractFields, recomputeDerived, pageExtract } from '../lib/extract.js';
 import { compileLabel, checkCompatibility } from '../lib/zpl.js';
@@ -15,6 +15,12 @@ let current = null; // { job, layout, format, values, edited }
 let selectToken = 0;
 let zpl = '';
 
+// Browsers cap extension popups at 600px height; the preview shrinks so everything fits.
+const POPUP_MAX_HEIGHT = 600;
+const PREVIEW_MAX_HEIGHT = 200;
+const PREVIEW_MIN_HEIGHT = 70;
+let previewHeight = PREVIEW_MAX_HEIGHT;
+
 function setStatus(message, type = 'info') {
   $('status').textContent = message;
   $('status').className = `status ${type}`;
@@ -28,11 +34,73 @@ function addOptions(select, items, label) {
   if (!items.length) return;
   const group = document.createElement('optgroup');
   group.label = label;
-  for (const item of items) {
-    const star = item.id === library.settings.defaultJobId ? ' ★' : '';
-    group.append(new Option(item.name + star, item.id));
-  }
+  for (const item of items) group.append(new Option(jobLabel(item), item.id));
   select.append(group);
+}
+
+const jobLabel = job => job.name + (job.id === library.settings.defaultJobId ? ' ★' : '');
+
+// ☆/★ buttons: default manual job (global) and default printer of the selected job.
+function updateDefaultButtons() {
+  const jobBtn = $('default-job-btn');
+  const printerBtn = $('default-printer-btn');
+  if (!current) {
+    jobBtn.hidden = printerBtn.hidden = true;
+    return;
+  }
+  const { job } = current;
+  const isDefaultJob = job.id === library.settings.defaultJobId;
+  jobBtn.hidden = hasTrigger(job.trigger); // only manual jobs can be the default
+  jobBtn.textContent = isDefaultJob ? '★' : '☆';
+  jobBtn.title = isDefaultJob
+    ? 'Standard-Labeldruck – klicken zum Entfernen'
+    : 'Als Standard-Labeldruck festlegen (im Popup vorausgewählt)';
+
+  const printerId = $('printer-select').value;
+  const isDefaultPrinter = printerId === job.printerId;
+  printerBtn.hidden = !printerId;
+  printerBtn.textContent = isDefaultPrinter ? '★' : '☆';
+  printerBtn.title = isDefaultPrinter
+    ? `Standard-Drucker für „${job.name}“`
+    : `Als Standard-Drucker für „${job.name}“ festlegen`;
+}
+
+async function persistDefault(apply, message) {
+  const previous = structuredClone(library);
+  apply();
+  try {
+    await saveLibrary(library);
+    setStatus(message, 'success');
+  } catch (error) {
+    library = previous;
+    current.job = byId(library.jobs, current.job.id);
+    setStatus(`Standard konnte nicht gespeichert werden: ${error.message}`, 'error');
+  }
+  for (const option of $('job-select').options) {
+    const job = byId(library.jobs, option.value);
+    if (job) option.textContent = jobLabel(job);
+  }
+  updateDefaultButtons();
+}
+
+function toggleDefaultJob() {
+  if (!current || hasTrigger(current.job.trigger)) return;
+  const { job } = current;
+  const isDefault = library.settings.defaultJobId === job.id;
+  persistDefault(
+    () => { library.settings.defaultJobId = isDefault ? '' : job.id; },
+    isDefault ? 'Standard-Labeldruck entfernt.' : `„${job.name}“ ist jetzt Standard-Labeldruck.`
+  );
+}
+
+function setDefaultPrinter() {
+  const printer = byId(library.printers, $('printer-select').value);
+  if (!current || !printer || current.job.printerId === printer.id) return;
+  const { job } = current;
+  persistDefault(
+    () => { job.printerId = printer.id; },
+    `„${printer.name}“ ist jetzt Standard-Drucker für „${job.name}“.`
+  );
 }
 
 // Jobs bound to this website + jobs without URL (manual). Jobs of other sites are hidden.
@@ -65,6 +133,7 @@ async function selectJob(jobId) {
   if (!job || !layout || !format) {
     current = null;
     $('fields').replaceChildren();
+    updateDefaultButtons();
     return setStatus('Labeldruck unvollständig: Layout oder Format fehlt.', 'error');
   }
 
@@ -88,6 +157,7 @@ async function selectJob(jobId) {
 
   renderFields();
   update();
+  updateDefaultButtons();
   setStatus(errors.length ? `Extraktion: ${errors.join('; ')}` : '', errors.length ? 'error' : 'info');
 }
 
@@ -96,8 +166,22 @@ function shapePreview(format) {
   const box = $('preview');
   const ratio = format.widthMm / format.lengthMm;
   box.style.aspectRatio = `${format.widthMm} / ${format.lengthMm}`;
-  box.style.width = `min(100%, ${Math.round(200 * ratio)}px)`; // max. 200px high
+  box.style.width = `min(100%, ${Math.round(previewHeight * ratio)}px)`; // max. previewHeight high
   box.classList.toggle('round', format.shape === 'round');
+}
+
+// Shrinks (or grows back) the preview so the popup needs no vertical scrollbar.
+function fitPopup() {
+  if (!current || $('main').hidden) return;
+  const overflow = document.documentElement.scrollHeight - POPUP_MAX_HEIGHT;
+  const boxHeight = $('preview').getBoundingClientRect().height;
+  const target = overflow > 0
+    ? boxHeight - overflow
+    : previewHeight - overflow; // free space: grow again (capped below)
+  const next = Math.round(Math.min(PREVIEW_MAX_HEIGHT, Math.max(PREVIEW_MIN_HEIGHT, target)));
+  if (Math.abs(next - previewHeight) < 1) return;
+  previewHeight = next;
+  shapePreview(current.format);
 }
 
 let previewTimer;
@@ -255,7 +339,10 @@ async function init() {
   for (const printer of library.printers) printerSelect.append(new Option(printer.name, printer.id));
 
   jobSelect.addEventListener('change', () => selectJob(jobSelect.value));
-  printerSelect.addEventListener('change', update);
+  printerSelect.addEventListener('change', () => { update(); updateDefaultButtons(); });
+  $('default-job-btn').addEventListener('click', toggleDefaultJob);
+  $('default-printer-btn').addEventListener('click', setDefaultPrinter);
+  new ResizeObserver(fitPopup).observe(document.body);
   $('copies').addEventListener('input', update);
   $('print-btn').addEventListener('click', print);
   $('clear-fields-btn').addEventListener('click', clearManualValues);

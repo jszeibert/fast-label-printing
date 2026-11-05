@@ -13,7 +13,10 @@
   <main id="main" hidden>
     <div class="row">
       <label for="job-select">Labeldruck</label>
-      <select id="job-select"></select>
+      <div class="select-row">
+        <select id="job-select"></select>
+        <button id="default-job-btn" class="star-btn" type="button">☆</button>
+      </div>
     </div>
 
     <div id="preview" class="preview">
@@ -27,7 +30,10 @@
     <div class="row two">
       <div>
         <label for="printer-select">Drucker</label>
-        <select id="printer-select"></select>
+        <div class="select-row">
+          <select id="printer-select"></select>
+          <button id="default-printer-btn" class="star-btn" type="button">☆</button>
+        </div>
       </div>
       <div class="copies">
         <label for="copies">Anzahl</label>

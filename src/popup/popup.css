@@ -12,6 +12,10 @@ body {
   color: #333;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -85,6 +89,32 @@ select:focus {
 
 .row.two > div:first-child {
   flex: 1;
+}
+
+.select-row {
+  display: flex;
+  gap: 4px;
+}
+
+.select-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.star-btn {
+  flex: none;
+  width: 30px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  color: #b8860b;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.star-btn:hover {
+  background: #f4f4f4;
 }
 
 .copies {
