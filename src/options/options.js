@@ -1,5 +1,5 @@
 import { loadLibrary, saveLibrary, sendToPrinter } from '../lib/store.js';
-import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL } from '../lib/model.js';
+import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL, formatFieldList, parseFieldList } from '../lib/model.js';
 import { buildPreviewUrl } from '../lib/preview.js';
 import { extractFields, matchesTrigger, hasTrigger } from '../lib/extract.js';
 import { mmToDots } from '../lib/zpl.js';
@@ -17,86 +17,87 @@ let selectedId = null;
 const DPMM_OPTIONS = [[8, '203 dpi (8 dpmm)'], [12, '300 dpi (12 dpmm)'], [24, '600 dpi (24 dpmm)']];
 const refOptions = collection => () => library[collection].map(item => [item.id, item.name]);
 
-const EXTRACT_HELP = `Regeln werden von oben nach unten ausgewertet. Quellen:
-  {"from":"const","value":"…"}            fester Wert
-  {"from":"urlParam","name":"objID"}       URL-Parameter
+const EXTRACT_HELP = `Rules are evaluated top to bottom. Sources:
+  {"from":"const","value":"…"}            fixed value
+  {"from":"urlParam","name":"objID"}       URL parameter
   {"from":"urlRegex","pattern":"/devices/(\\\\d+)/"}
-  {"from":"title","split":" > ","index":1}  oder {"from":"title","regex":"…"}
-  {"from":"field","field":"name"}          Wert eines vorherigen Feldes
-  {"from":"template","value":"{{url}}/?objID={{id}}"}  Text aus vorherigen Feldern
-Auf der Seite (nur im Popup, mit deiner Login-Session):
-  {"from":"css","selector":"h1","attr":"title"}   Text/Attribut eines Elements
-  {"from":"api","url":"/api/dcim/devices/{{id}}/","path":"role.name"}  JSON-API der Seite
-Nachbearbeitung über "post": [{"op":"trim"}, {"op":"upper"}, {"op":"lower"},
+  {"from":"title","split":" > ","index":1}  or {"from":"title","regex":"…"}
+  {"from":"field","field":"name"}          value of an earlier field
+  {"from":"template","value":"{{url}}/?objID={{id}}"}  text from earlier fields
+On the page (popup only, with your login session):
+  {"from":"css","selector":"h1","attr":"title"}   text/attribute of an element
+  {"from":"api","url":"/api/dcim/devices/{{id}}/","path":"role.name"}  JSON API of the site
+Post-processing via "post": [{"op":"trim"}, {"op":"upper"}, {"op":"lower"},
   {"op":"replace","search":"Development","replace":"Dev"},
-  {"op":"line","maxChars":11,"line":1}]`;
+  {"op":"wrap","maxWidth":150,"fontSize":27,"maxLines":2}]
+    wrap = line breaks by estimated width in dots (font 0), for multi-line fields`;
 
 const ENTITIES = {
   printers: {
-    help: 'Zebra-Drucker, an die per HTTP-POST (ZPL) gedruckt wird.',
+    help: 'Zebra printers that receive ZPL via HTTP POST.',
     prefix: 'printer',
-    create: () => ({ name: 'Neuer Drucker', url: '', dpmm: 12, printMethod: 'direct', darkness: null, speed: null }),
+    create: () => ({ name: 'New printer', url: '', dpmm: 12, printMethod: 'direct', darkness: null, speed: null }),
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
-      { key: 'url', label: 'URL', type: 'url', placeholder: 'http://192.168.1.50/pstprnt', help: 'Endpoint, an den das ZPL gesendet wird.' },
-      { key: 'dpmm', label: 'Auflösung', type: 'select', number: true, options: () => DPMM_OPTIONS },
-      { key: 'printMethod', label: 'Druckverfahren', type: 'select', options: () => [['direct', 'Thermodirekt'], ['transfer', 'Thermotransfer']], help: 'Nur zur Prüfung (Warnung bei Thermodirekt-Papier auf Transferdrucker); wird nicht an den Drucker gesendet.' },
-      { key: 'darkness', label: 'Schwärzung (0–30)', type: 'number', min: 0, max: 30, optional: true, help: 'Leer = Druckereinstellung. Wird als ~SD gesendet.' },
-      { key: 'speed', label: 'Geschwindigkeit (ips)', type: 'number', min: 1, max: 14, optional: true, help: 'Leer = Druckereinstellung. Wird als ^PR gesendet.' }
+      { key: 'url', label: 'URL', type: 'url', placeholder: 'http://192.168.1.50/pstprnt', help: 'Endpoint the ZPL is sent to.' },
+      { key: 'dpmm', label: 'Resolution', type: 'select', number: true, options: () => DPMM_OPTIONS },
+      { key: 'printMethod', label: 'Print method', type: 'select', options: () => [['direct', 'Direct thermal'], ['transfer', 'Thermal transfer']], help: 'Only used for checks (warning for direct thermal paper on a transfer printer); not sent to the printer.' },
+      { key: 'darkness', label: 'Darkness (0–30)', type: 'number', min: 0, max: 30, optional: true, help: 'Empty = printer setting. Sent as ~SD.' },
+      { key: 'speed', label: 'Speed (ips)', type: 'number', min: 1, max: 14, optional: true, help: 'Empty = printer setting. Sent as ^PR.' }
     ],
-    actions: [{ label: 'Testdruck', run: testPrint }]
+    actions: [{ label: 'Test print', run: testPrint }]
   },
 
   formats: {
-    help: 'Physische Etiketten. Breite/Länge ergeben ^PW/^LL – sie stehen nicht mehr im Template.',
+    help: 'Physical labels. Width/length produce ^PW/^LL – they are no longer part of the template.',
     prefix: 'fmt',
-    create: () => ({ name: 'Neuer Labeltyp', articleNo: '', widthMm: 50, lengthMm: 25, shape: 'rect', media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 }),
+    create: () => ({ name: 'New label type', articleNo: '', widthMm: 50, lengthMm: 25, shape: 'rect', media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 }),
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
-      { key: 'articleNo', label: 'Artikelnummer(n)', type: 'text', placeholder: 'z. B. 3052929', help: 'Nur zur Info, z. B. für Nachbestellungen.' },
-      { key: 'widthMm', label: 'Breite (mm, quer zum Druckkopf)', type: 'number', step: 0.1, min: 1 },
-      { key: 'lengthMm', label: 'Länge (mm, in Laufrichtung)', type: 'number', step: 0.1, min: 1 },
-      { key: 'shape', label: 'Form', type: 'select', options: () => [['rect', 'Rechteckig'], ['round', 'Rund']] },
-      { key: 'media', label: 'Material', type: 'select', options: () => [['any', 'Beliebig / Thermotransfer'], ['direct', 'Thermodirekt-Papier']] },
-      { key: 'sensing', label: 'Etikettenerkennung', type: 'select', options: () => [['', 'Druckereinstellung'], ['gap', 'Lücke (^MNY)'], ['mark', 'Schwarze Markierung (^MNM)'], ['continuous', 'Endlos (^MNN)']] },
-      { key: 'offsetXMm', label: 'Versatz X (mm)', type: 'number', step: 0.1, min: 0, help: 'Verschiebt den Ursprung (^LH), zum Justieren.' },
-      { key: 'offsetYMm', label: 'Versatz Y (mm)', type: 'number', step: 0.1, min: 0 }
+      { key: 'articleNo', label: 'Article number(s)', type: 'text', placeholder: 'e.g. 3052929', help: 'For information only, e.g. for reordering.' },
+      { key: 'widthMm', label: 'Width (mm, across the print head)', type: 'number', step: 0.1, min: 1 },
+      { key: 'lengthMm', label: 'Length (mm, in feed direction)', type: 'number', step: 0.1, min: 1 },
+      { key: 'shape', label: 'Shape', type: 'select', options: () => [['rect', 'Rectangular'], ['round', 'Round']] },
+      { key: 'media', label: 'Media', type: 'select', options: () => [['any', 'Any / thermal transfer'], ['direct', 'Direct thermal paper']] },
+      { key: 'sensing', label: 'Media sensing', type: 'select', options: () => [['', 'Printer setting'], ['gap', 'Gap (^MNY)'], ['mark', 'Black mark (^MNM)'], ['continuous', 'Continuous (^MNN)']] },
+      { key: 'offsetXMm', label: 'Offset X (mm)', type: 'number', step: 0.1, min: 0, help: 'Moves the origin (^LH), for fine adjustment.' },
+      { key: 'offsetYMm', label: 'Offset Y (mm)', type: 'number', step: 0.1, min: 0 }
     ],
-    actions: [{ label: 'Rahmen testdrucken', run: testFrame }]
+    actions: [{ label: 'Print test frame', run: testFrame }]
   },
 
   layouts: {
-    help: 'Label-Inhalt als ZPL. Platzhalter: {{feldname}}. Die Felder erscheinen im Popup als Eingaben.',
+    help: 'Label content as ZPL. Placeholders: {{fieldname}}. The fields appear as inputs in the popup.',
     prefix: 'layout',
     create: () => ({
-      name: 'Neues Template', formatId: library.formats[0]?.id ?? '', dpmm: 12, type: 'zpl',
+      name: 'New template', formatId: library.formats[0]?.id ?? '', dpmm: 12, type: 'zpl',
       fields: [{ key: 'text', label: 'Text' }],
       zpl: '^XA\n^CF0,40\n^FO20,20^FD{{text}}^FS\n^XZ'
     }),
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
-      { key: 'formatId', label: 'Labeltyp', type: 'select', options: refOptions('formats') },
-      { key: 'dpmm', label: 'Gebaut für Auflösung', type: 'select', number: true, options: () => DPMM_OPTIONS, help: 'ZPL-Koordinaten sind in Dots – das Popup warnt bei abweichendem Drucker.' },
-      { key: 'fields', label: 'Felder (eins pro Zeile: schluessel = Beschriftung)', type: 'fieldlist', rows: 5 },
+      { key: 'formatId', label: 'Label type', type: 'select', options: refOptions('formats') },
+      { key: 'dpmm', label: 'Built for resolution', type: 'select', number: true, options: () => DPMM_OPTIONS, help: 'ZPL coordinates are in dots – the popup warns if the printer differs.' },
+      { key: 'fields', label: 'Fields (one per line: key = label)', type: 'fieldlist', rows: 5, help: '“| multiline” at the end of a line = text area with line breaks, e.g. “name = Name | multiline”. Line breaks become \\& in the ZPL – the field must be inside a ^FB block.' },
       { key: 'zpl', label: 'ZPL', type: 'code', rows: 14 }
     ]
   },
 
   jobs: {
-    help: 'Verknüpft ein Template mit einem Drucker und – optional – mit einer Website, aus der die Felder automatisch befüllt werden. Ohne Website ist der Labeldruck im Popup immer unter „Manuell“ wählbar.',
+    help: 'Links a template to a printer and – optionally – to a website from which the fields are filled automatically. Without a website, the label job can always be selected in the popup under “Manual”.',
     prefix: 'job',
     create: () => ({
-      name: 'Neuer Labeldruck', trigger: { urlPrefix: '', urlContains: '', urlRegex: '' },
+      name: 'New label job', trigger: { urlPrefix: '', urlContains: '', urlRegex: '' },
       extract: {}, layoutId: library.layouts[0]?.id ?? '', printerId: library.printers[0]?.id ?? ''
     }),
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
       { key: 'layoutId', label: 'Template', type: 'select', options: refOptions('layouts') },
-      { key: 'printerId', label: 'Standard-Drucker', type: 'select', options: refOptions('printers') },
-      { key: 'trigger.urlPrefix', label: 'Website (URL-Anfang)', type: 'text', placeholder: 'https://netbox.example.com', help: 'Leer = manueller Labeldruck. Nur auf URLs mit diesem Anfang wird der Labeldruck angeboten.' },
-      { key: 'trigger.urlContains', label: 'URL muss enthalten', type: 'text', placeholder: 'objID' },
-      { key: 'trigger.urlRegex', label: 'URL muss passen auf (Regex)', type: 'text', placeholder: '/dcim/devices/\\d+/', help: 'Wirkt nur zusätzlich zur Website.' },
-      { key: 'extract', label: 'Extraktion (JSON)', type: 'json', rows: 12, help: EXTRACT_HELP }
+      { key: 'printerId', label: 'Default printer', type: 'select', options: refOptions('printers') },
+      { key: 'trigger.urlPrefix', label: 'Website (URL prefix)', type: 'text', placeholder: 'https://netbox.example.com', help: 'Empty = manual label job. The label job is only offered on URLs starting with this prefix.' },
+      { key: 'trigger.urlContains', label: 'URL must contain', type: 'text', placeholder: 'objID' },
+      { key: 'trigger.urlRegex', label: 'URL must match (regex)', type: 'text', placeholder: '/dcim/devices/\\d+/', help: 'Only applies in addition to the website.' },
+      { key: 'extract', label: 'Extraction (JSON)', type: 'json', rows: 12, help: EXTRACT_HELP }
     ],
     extraPanel: renderExtractionTester
   }
@@ -147,7 +148,7 @@ function renderInput(field, value) {
     case 'fieldlist': {
       let text = value ?? '';
       if (field.type === 'json') text = JSON.stringify(value ?? {}, null, 2);
-      if (field.type === 'fieldlist') text = (value || []).map(f => `${f.key} = ${f.label}`).join('\n');
+      if (field.type === 'fieldlist') text = formatFieldList(value);
       return el('textarea', { id, rows: field.rows || 6, className: 'code', spellcheck: false, value: text });
     }
     default:
@@ -165,7 +166,7 @@ function readInput(field) {
     case 'number':
       if (raw === '') {
         if (field.optional) return null;
-        throw new Error(`„${field.label}“ fehlt`);
+        throw new Error(`“${field.label}” is missing`);
       }
       return Number(raw);
     case 'select':
@@ -174,16 +175,13 @@ function readInput(field) {
       try {
         return JSON.parse(raw || '{}');
       } catch (error) {
-        throw new Error(`„${field.label}“: ungültiges JSON – ${error.message}`);
+        throw new Error(`“${field.label}”: invalid JSON – ${error.message}`);
       }
     case 'fieldlist':
-      return raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
-        const [key, ...rest] = line.split('=');
-        return { key: key.trim(), label: rest.join('=').trim() || key.trim() };
-      });
+      return parseFieldList(raw);
     default: {
       const value = raw.trim();
-      if (field.required && !value) throw new Error(`„${field.label}“ darf nicht leer sein`);
+      if (field.required && !value) throw new Error(`“${field.label}” must not be empty`);
       return value;
     }
   }
@@ -200,7 +198,7 @@ function renderForm() {
   const hasEntity = Boolean(entity);
   for (const id of ['save-btn', 'duplicate-btn', 'delete-btn']) $(id).hidden = !hasEntity;
   if (!hasEntity) {
-    form.append(el('p', { className: 'empty' }, 'Nichts ausgewählt – links einen Eintrag wählen oder „Neu“ anlegen.'));
+    form.append(el('p', { className: 'empty' }, 'Nothing selected – choose an entry on the left or create a “New” one.'));
     return;
   }
 
@@ -225,7 +223,7 @@ function renderList() {
   list.replaceChildren();
   for (const item of library[activeTab]) {
     const star = activeTab === 'jobs' && item.id === library.settings.defaultJobId ? ' ★' : '';
-    const li = el('li', { className: item.id === selectedId ? 'active' : '' }, (item.name || '(ohne Name)') + star);
+    const li = el('li', { className: item.id === selectedId ? 'active' : '' }, (item.name || '(no name)') + star);
     li.addEventListener('click', () => { selectedId = item.id; render(); });
     list.append(li);
   }
@@ -278,7 +276,7 @@ async function saveCurrent() {
   } catch (error) {
     return showStatus(error.message, 'error');
   }
-  await persist('Gespeichert.');
+  await persist('Saved.');
 }
 
 async function addEntity() {
@@ -286,28 +284,28 @@ async function addEntity() {
   const entity = { id: newId(def.prefix), ...def.create() };
   library[activeTab].push(entity);
   selectedId = entity.id;
-  await persist('Neuer Eintrag angelegt.');
+  await persist('New entry created.');
 }
 
 async function duplicateCurrent() {
   const original = byId(library[activeTab], selectedId);
   if (!original) return;
-  const copy = { ...structuredClone(original), id: newId(ENTITIES[activeTab].prefix), name: `${original.name} (Kopie)` };
+  const copy = { ...structuredClone(original), id: newId(ENTITIES[activeTab].prefix), name: `${original.name} (copy)` };
   library[activeTab].push(copy);
   selectedId = copy.id;
-  await persist('Dupliziert.');
+  await persist('Duplicated.');
 }
 
 async function deleteCurrent() {
   const entity = byId(library[activeTab], selectedId);
   if (!entity) return;
   const refs = findReferences(library, activeTab, entity.id);
-  if (refs.length) return showStatus(`„${entity.name}“ wird noch verwendet von: ${refs.join(', ')}`, 'error');
-  if (!confirm(`„${entity.name}“ wirklich löschen?`)) return;
+  if (refs.length) return showStatus(`“${entity.name}” is still used by: ${refs.join(', ')}`, 'error');
+  if (!confirm(`Really delete “${entity.name}”?`)) return;
   library[activeTab] = library[activeTab].filter(item => item.id !== entity.id);
   if (library.settings.defaultJobId === entity.id) library.settings.defaultJobId = '';
   selectedId = library[activeTab][0]?.id ?? null;
-  await persist('Gelöscht.');
+  await persist('Deleted.');
 }
 
 // ---------------------------------------------------------------------------
@@ -316,12 +314,12 @@ async function deleteCurrent() {
 
 async function testPrint(printer) {
   const url = $('f-url').value.trim();
-  if (!url) return showStatus('Bitte zuerst eine URL eintragen.', 'error');
+  if (!url) return showStatus('Please enter a URL first.', 'error');
   try {
-    await sendToPrinter(url, `^XA^FO20,20^A0N,30,30^FD${printer.name.replace(/[\^~]/g, ' ')}^FS^FO20,60^A0N,25,25^FDTestdruck^FS^XZ`);
-    showStatus('Testdruck gesendet.', 'success');
+    await sendToPrinter(url, `^XA^FO20,20^A0N,30,30^FD${printer.name.replace(/[\^~]/g, ' ')}^FS^FO20,60^A0N,25,25^FDTest print^FS^XZ`);
+    showStatus('Test print sent.', 'success');
   } catch (error) {
-    showStatus(`Testdruck fehlgeschlagen: ${error.message}`, 'error');
+    showStatus(`Test print failed: ${error.message}`, 'error');
   }
 }
 
@@ -334,8 +332,8 @@ async function testFrame() {
     return showStatus(error.message, 'error');
   }
   const printer = library.printers.find(p => p.url);
-  if (!printer) return showStatus('Kein Drucker mit URL vorhanden.', 'error');
-  if (!confirm(`Rahmen auf „${printer.name}“ drucken?`)) return;
+  if (!printer) return showStatus('No printer with a URL available.', 'error');
+  if (!confirm(`Print frame on “${printer.name}”?`)) return;
 
   const w = mmToDots(format.widthMm, printer.dpmm);
   const l = mmToDots(format.lengthMm, printer.dpmm);
@@ -346,9 +344,9 @@ async function testFrame() {
     : `^FO0,0^GB${w},${l},3^FS`;
   try {
     await sendToPrinter(printer.url, `^XA^PW${w}^LL${l}^LH${x},${y}${shape}^XZ`);
-    showStatus(`Rahmen an „${printer.name}“ gesendet.`, 'success');
+    showStatus(`Frame sent to “${printer.name}”.`, 'success');
   } catch (error) {
-    showStatus(`Druck fehlgeschlagen: ${error.message}`, 'error');
+    showStatus(`Printing failed: ${error.message}`, 'error');
   }
 }
 
@@ -357,7 +355,7 @@ function renderExtractionTester(container) {
   const url = el('input', { type: 'url', placeholder: 'https://idoit.example.com/?objID=123' });
   const title = el('input', { type: 'text', placeholder: 'i-doit > Server > srv-backup-01' });
   const output = el('pre', { className: 'test-results' });
-  const button = el('button', { type: 'button', className: 'btn btn-secondary' }, 'Testen');
+  const button = el('button', { type: 'button', className: 'btn btn-secondary' }, 'Test');
 
   button.addEventListener('click', async () => {
     let job;
@@ -371,16 +369,16 @@ function renderExtractionTester(container) {
     const { values, errors } = await extractFields(job.extract, page);
     const triggered = matchesTrigger(job.trigger, page.url);
     output.textContent = [
-      job.trigger?.urlPrefix ? `Trigger: ${triggered ? '✅ passt' : '❌ passt nicht'}` : 'Trigger: – (manueller Labeldruck)',
+      job.trigger?.urlPrefix ? `Trigger: ${triggered ? '✅ matches' : '❌ does not match'}` : 'Trigger: – (manual label job)',
       ...errors.map(e => `❌ ${e}`),
       JSON.stringify(values, null, 2)
     ].join('\n');
   });
 
   container.append(el('div', { className: 'section tester' },
-    el('h3', {}, 'Extraktion testen'),
-    el('div', { className: 'form-group' }, el('label', {}, 'Beispiel-URL'), url),
-    el('div', { className: 'form-group' }, el('label', {}, 'Beispiel-Seitentitel'), title),
+    el('h3', {}, 'Test extraction'),
+    el('div', { className: 'form-group' }, el('label', {}, 'Sample URL'), url),
+    el('div', { className: 'form-group' }, el('label', {}, 'Sample page title'), title),
     button,
     output));
 }
@@ -392,7 +390,7 @@ function renderExtractionTester(container) {
 function renderGeneral() {
   $('preview-api-url').value = library.settings.previewApiUrl ?? '';
   const select = $('default-job');
-  select.replaceChildren(new Option('– keiner (erster manueller Labeldruck) –', ''));
+  select.replaceChildren(new Option('– none (first manual label job) –', ''));
   for (const job of library.jobs.filter(j => !hasTrigger(j.trigger))) select.append(new Option(job.name, job.id));
   select.value = byId(library.jobs, library.settings.defaultJobId) ? library.settings.defaultJobId : '';
 }
@@ -403,7 +401,7 @@ async function saveGeneral() {
     previewApiUrl: $('preview-api-url').value.trim(),
     defaultJobId: $('default-job').value
   };
-  await persist('Gespeichert.');
+  await persist('Saved.');
 }
 
 // Renders a test label for every label type with the first printer's resolution.
@@ -411,7 +409,7 @@ function testPreview() {
   const template = $('preview-api-url').value.trim();
   const container = $('preview-test');
   container.replaceChildren();
-  if (!template) return showStatus('Keine Vorschau-URL eingetragen.', 'error');
+  if (!template) return showStatus('No preview URL entered.', 'error');
   const printer = library.printers[0] ?? { dpmm: 12 };
 
   for (const format of library.formats) {
@@ -442,18 +440,18 @@ async function importLibrary(event) {
   if (!file) return;
   try {
     const imported = normalizeLibrary(JSON.parse(await file.text()));
-    if (!confirm('Die aktuelle Konfiguration wird komplett ersetzt. Fortfahren?')) return;
+    if (!confirm('The current configuration will be replaced completely. Continue?')) return;
     library = imported;
-    await persist('Import erfolgreich.');
+    await persist('Import successful.');
   } catch (error) {
-    showStatus(`Import fehlgeschlagen: ${error.message}`, 'error');
+    showStatus(`Import failed: ${error.message}`, 'error');
   }
 }
 
 async function resetLibrary() {
-  if (!confirm('Alle Drucker, Labeltypen, Templates und Labeldrucke auf den Standard zurücksetzen?')) return;
+  if (!confirm('Reset all printers, label types, templates and label jobs to the defaults?')) return;
   library = createDefaultLibrary();
-  await persist('Auf Standard zurückgesetzt.');
+  await persist('Reset to defaults.');
 }
 
 // ---------------------------------------------------------------------------
@@ -462,7 +460,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     library = await loadLibrary();
   } catch (error) {
-    return showStatus(`Laden fehlgeschlagen: ${error.message}`, 'error');
+    return showStatus(`Loading failed: ${error.message}`, 'error');
   }
 
   for (const button of document.querySelectorAll('#tabs button')) {

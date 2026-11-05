@@ -20,7 +20,7 @@ function createStorage(initial = {}) {
 test('printerOriginPattern covers the printer host (any port/path)', () => {
   assert.equal(printerOriginPattern('http://10.0.0.5/pstprnt'), 'http://10.0.0.5/*');
   assert.equal(printerOriginPattern('http://zebra.local:8080/pstprnt'), 'http://zebra.local/*');
-  assert.throws(() => printerOriginPattern('kein url'));
+  assert.throws(() => printerOriginPattern('not a url'));
 });
 
 test('first start creates and saves the default library', async () => {
@@ -41,10 +41,10 @@ test('first start after v2 migrates old settings and keeps the v2 keys', async (
 });
 
 test('a stored library wins over v2 keys and is not rewritten', async () => {
-  const stored = { schemaVersion: SCHEMA_VERSION, printers: [{ id: 'p', name: 'Mein Drucker' }] };
+  const stored = { schemaVersion: SCHEMA_VERSION, printers: [{ id: 'p', name: 'My printer' }] };
   const storage = createStorage({ [LIBRARY_KEY]: stored, 'printer-url': 'http://old/pstprnt' });
   const library = await loadLibrary(storage);
-  assert.equal(library.printers[0].name, 'Mein Drucker');
+  assert.equal(library.printers[0].name, 'My printer');
   assert.deepEqual(library.jobs, []);
   assert.deepEqual(storage.data[LIBRARY_KEY], stored);
 });

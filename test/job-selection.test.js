@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { availableJobs, pickInitialJob, initialValues, toggledDefaultJobId } from '../src/lib/job-selection.js';
+import { availableJobs, pickInitialJob, initialValues, toggledDefaultJobId, hasFieldValues } from '../src/lib/job-selection.js';
 import { createDefaultLibrary } from '../src/lib/model.js';
 
 const ids = jobs => jobs.map(job => job.id);
@@ -46,4 +46,14 @@ test('default star toggles manual jobs and ignores jobs bound to a site', () => 
   assert.equal(toggledDefaultJobId('job-manual-inventory', manual), 'job-manual-text-75x50');
   assert.equal(toggledDefaultJobId('job-manual-text-75x50', manual), '');
   assert.equal(toggledDefaultJobId('job-manual-inventory', idoit), 'job-manual-inventory');
+});
+
+test('no preview for a label whose fields are all empty', () => {
+  const layout = { fields: [{ key: 'id' }, { key: 'name' }] };
+  assert.equal(hasFieldValues(layout, {}), false);
+  assert.equal(hasFieldValues(layout, { id: '', name: ' \n ' }), false);
+  // derived values that are not fields (e.g. the QR URL) do not count
+  assert.equal(hasFieldValues(layout, { qr: 'https://idoit.example.com/?objID=' }), false);
+  assert.equal(hasFieldValues(layout, { name: 'srv-01' }), true);
+  assert.equal(hasFieldValues({ fields: [] }, {}), true); // static template
 });

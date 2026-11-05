@@ -24,3 +24,11 @@ export function toggledDefaultJobId(currentDefaultId, job) {
   if (hasTrigger(job.trigger)) return currentDefaultId;
   return currentDefaultId === job.id ? '' : job.id;
 }
+
+// Is there anything to preview? An empty label is not sent to the preview service
+// (e.g. right after opening the popup on a page without a matching job).
+// Templates without fields are static content and always have something to show.
+export function hasFieldValues(layout, values) {
+  const fields = layout?.fields || [];
+  return !fields.length || fields.some(field => String(values?.[field.key] ?? '').trim() !== '');
+}

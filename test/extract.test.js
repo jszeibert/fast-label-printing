@@ -20,7 +20,7 @@ test('triggers are bound to a website; regex alone never triggers', () => {
   assert.ok(!matchesTrigger({ urlPrefix: 'https://x', urlRegex: '(' }, 'https://x/'));
 });
 
-test('default I-Doit job extracts like v2', async () => {
+test('default I-Doit job extracts the name with automatic line breaks', async () => {
   const job = byId(createDefaultLibrary().jobs, 'job-idoit-inventory');
   const page = {
     url: 'https://idoit.example.com/?objID=4711&viewMode=1',
@@ -34,9 +34,7 @@ test('default I-Doit job extracts like v2', async () => {
     id: '4711',
     qr: 'https://idoit.example.com/?objID=4711',
     type: 'Dev Server',
-    name: 'backup-storage-01',
-    line1: 'backup',
-    line2: '-storage-01'
+    name: 'backup-\nstorage-01'
   });
 });
 
@@ -63,10 +61,8 @@ test('Netbox job: url/title in extension, role via page API', async () => {
   assert.deepEqual(values, {
     id: '123',
     qr: 'https://netbox.example.com/dcim/devices/123/',
-    name: 'srv-backup-01',
-    type: 'Dev Server',
-    line1: 'srv-backup',
-    line2: '-01'
+    name: 'srv-\nbackup-01',
+    type: 'Dev Server'
   });
   assert.equal(calls[0].url, '/api/dcim/devices/123/'); // {{id}} interpolated
   assert.equal(calls[0].path, 'role.name');
@@ -75,7 +71,7 @@ test('Netbox job: url/title in extension, role via page API', async () => {
 test('page sources without resolver report an error', async () => {
   const { values, errors } = await extractFields({ x: { from: 'css', selector: 'h1' } }, { url: '', title: '' });
   assert.equal(values.x, '');
-  assert.match(errors[0], /nur im Popup/);
+  assert.match(errors[0], /only available in the popup/);
 });
 
 test('recomputeDerived updates template/field values but keeps edited ones', () => {

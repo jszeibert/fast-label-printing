@@ -29,7 +29,11 @@ Browser extension for printing labels (ZPL) on Zebra printers – filled automat
 
 - **Printers**: any number of Zebra printers (URL, resolution, print method, darkness, speed)
 - **Label types**: physical labels (size, shape, media, sensing, offsets) – `^PW`/`^LL` are generated
-- **Templates**: ZPL with `{{field}}` placeholders; fields become inputs in the popup
+- **Templates**: ZPL with `{{field}}` placeholders; fields become inputs in the popup.
+  Fields marked `| multiline` become text areas; their line breaks are sent as `\&` (line break inside a `^FB` field block)
+- **Inventory label**: the name is one multi-line field. When read from I-Doit / Netbox it is wrapped automatically
+  by estimated print width; line breaks can be changed freely in the popup and are not enforced (text may run over the label)
+- **Text label**: the second line is a text area; the printer wraps it automatically (up to 3 lines)
 - **Label jobs**: template + printer + optional website trigger + extraction rules
 - **Manual jobs**: jobs without website are always selectable in the popup
 - **Manual text**: entries are saved per manual label and remain until cleared with the popup's clear button
@@ -38,7 +42,7 @@ Browser extension for printing labels (ZPL) on Zebra printers – filled automat
 
 ## 🔧 Configuration
 
-Everything is configured in the options page (tabs *Drucker*, *Labeltypen*, *Templates*, *Labeldrucke*, *Import / Export*).
+Everything is configured in the options page (tabs *Printers*, *Label types*, *Templates*, *Label jobs*, *General*).
 
 ### Extraction rules
 
@@ -50,23 +54,24 @@ A label job extracts field values from the current page. Rules are evaluated top
   "id":    { "from": "urlParam", "name": "objID" },
   "type":  { "from": "title", "split": " > ", "index": 1,
              "post": [{ "op": "replace", "search": "Development", "replace": "Dev" }] },
-  "name":  { "from": "title", "split": " > ", "index": 2 },
-  "line1": { "from": "field", "field": "name", "post": [{ "op": "line", "maxChars": 11, "line": 1 }] }
+  "name":  { "from": "title", "split": " > ", "index": 2,
+             "post": [{ "op": "wrap", "maxWidth": 150, "fontSize": 27, "maxLines": 2 }] }
 }
 ```
 
 Sources: `const`, `urlParam`, `urlRegex`, `title`, `field`, `template` (e.g. `"{{url}}/?objID={{id}}"`),
 and – evaluated inside the page with the user's logged-in session – `css` (`selector`, `attr`) and
 `api` (`url` with `{{field}}` placeholders, JSON `path`, e.g. Netbox `/api/dcim/devices/{{id}}/` → `role.name`).
-Post ops: `trim`, `upper`, `lower`, `replace`, `line`.
+Post ops: `trim`, `upper`, `lower`, `replace`, `wrap` (line breaks by estimated width of ZPL font 0 in dots;
+text beyond `maxLines` stays on the last line), `line` (old 11-character split, for existing configurations).
 A job only triggers on its website (URL prefix); *URL contains* / *regex* narrow it down further.
 
 ### Default configuration
 
-- Label jobs: *I-Doit Inventarlabel*, *Netbox Inventarlabel* (both use the template *Inventarlabel (QR)*),
-  *Inventarlabel (manuell)*, *Textlabel 75×50 mm (manuell)*
+- Label jobs: *I-Doit inventory label*, *Netbox inventory label* (both use the template *Inventory label (QR)*),
+  *Inventory label (manual)*, *Text label 75×50 mm (manual)*
 - Label types: inventory label 24×14 mm, Dymo S0722540 57×32 mm, Dymo 14681 round Ø57 mm
-- A default label job (tab *Allgemein*) is preselected when no job matches the current page; it can also be set in the popup with the ☆/★ button next to the job
+- A default label job (tab *General*) is preselected when no job matches the current page; it can also be set in the popup with the ☆/★ button next to the job
 - The ☆/★ button next to the printer saves the selected printer as the job's default printer
 
 ## 📖 Usage

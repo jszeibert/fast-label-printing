@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="popup.css">
@@ -7,12 +7,12 @@
 <body>
   <header class="popup-header">
     <h3>🏷️ Fast Label Printer</h3>
-    <button id="options-btn" class="icon-btn" title="Einstellungen">⚙️</button>
+    <button id="options-btn" class="icon-btn" title="Settings">⚙️</button>
   </header>
 
   <main id="main" hidden>
     <div class="row">
-      <label for="job-select">Labeldruck</label>
+      <label for="job-select">Label job</label>
       <div class="select-row">
         <select id="job-select"></select>
         <button id="default-job-btn" class="star-btn" type="button">☆</button>
@@ -20,41 +20,41 @@
     </div>
 
     <div id="preview" class="preview">
-      <img id="preview-img" alt="Label-Vorschau" hidden>
-      <span id="preview-msg" class="preview-msg">Vorschau wird geladen …</span>
+      <img id="preview-img" alt="Label preview" hidden>
+      <span id="preview-msg" class="preview-msg">Loading preview …</span>
     </div>
     <div id="format-info" class="format-info"></div>
     <div id="fields" class="fields"></div>
-    <button id="clear-fields-btn" class="clear-btn" hidden>🗑️ Eingaben löschen</button>
+    <button id="clear-fields-btn" class="clear-btn" hidden>🗑️ Clear inputs</button>
 
     <div class="row two">
       <div>
-        <label for="printer-select">Drucker</label>
+        <label for="printer-select">Printer</label>
         <div class="select-row">
           <select id="printer-select"></select>
           <button id="default-printer-btn" class="star-btn" type="button">☆</button>
         </div>
       </div>
       <div class="copies">
-        <label for="copies">Anzahl</label>
+        <label for="copies">Copies</label>
         <input id="copies" type="number" min="1" max="999" value="1">
       </div>
     </div>
 
     <ul id="warnings" class="warnings"></ul>
 
-    <button id="print-btn" class="print-btn">🖨️ Drucken</button>
+    <button id="print-btn" class="print-btn">🖨️ Print</button>
 
     <details class="zpl-details">
-      <summary>ZPL anzeigen</summary>
+      <summary>Show ZPL</summary>
       <pre id="zpl-output"></pre>
     </details>
   </main>
 
   <div id="empty" class="message" hidden>
-    <p><strong>Kein Labeldruck verfügbar.</strong></p>
-    <p>Für diese Seite ist kein Labeldruck hinterlegt und es gibt keinen manuellen Labeldruck.</p>
-    <button id="empty-settings-btn" class="btn">⚙️ Einstellungen öffnen</button>
+    <p><strong>No label job available.</strong></p>
+    <p>There is no label job for this page and no manual label job.</p>
+    <button id="empty-settings-btn" class="btn">⚙️ Open settings</button>
   </div>
 
   <div id="status" class="status"></div>

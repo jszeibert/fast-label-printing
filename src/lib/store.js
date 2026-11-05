@@ -38,7 +38,7 @@ function ensurePrinterPermission(printerUrl) {
 export async function sendToPrinter(printerUrl, zpl) {
   const granted = await ensurePrinterPermission(printerUrl);
   if (!granted) {
-    throw new Error(`Zugriff auf ${new URL(printerUrl).host} wurde nicht erlaubt.`);
+    throw new Error(`Access to ${new URL(printerUrl).host} was not allowed.`);
   }
   let response;
   try {
@@ -48,7 +48,7 @@ export async function sendToPrinter(printerUrl, zpl) {
       headers: { 'Content-Type': 'application/x-zpl' }
     });
   } catch (error) {
-    throw new Error(`Drucker nicht erreichbar (${error.message}). Adresse und Netzwerk prüfen; in Firefox unter about:addons → Berechtigungen den Zugriff auf Websites erlauben.`);
+    throw new Error(`Printer not reachable (${error.message}). Check address and network; in Firefox allow website access under about:addons → Permissions.`);
   }
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
 }

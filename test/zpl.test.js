@@ -28,6 +28,10 @@ test('placeholders are filled and ZPL control chars stripped', () => {
   assert.equal(fillPlaceholders('{{a}}|{{ b }}|{{missing}}', { a: 'x^y~z', b: 1 }), 'x y z|1|');
 });
 
+test('line breaks of multi-line fields become ^FB line breaks (\\&)', () => {
+  assert.equal(fillPlaceholders('^FD{{name}}^FS', { name: 'srv-\nbackup-01\r\nRack 3' }), '^FDsrv-\\&backup-01\\&Rack 3^FS');
+});
+
 test('compatibility warnings', () => {
   assert.deepEqual(checkCompatibility({ layout, format, printer }), []);
   const warnings = checkCompatibility({

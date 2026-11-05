@@ -1,3 +1,5 @@
+import { wrapText } from './wrap.js';
+
 // Declarative extraction of label values from the current page.
 //
 // A rule: { from: <source>, ...sourceOptions, post: [<op>, ...] }
@@ -9,7 +11,9 @@
 // Sources (evaluated inside the page, popup only):
 //   css {selector, attr?}       text (or attribute) of the first matching element
 //   api {url, path}             GET JSON from the site with the user's session; url may use {{key}}
-// Post ops: trim | upper | lower | replace {search, replace, regex} | line {maxChars, line: 1|2}
+// Post ops: trim | upper | lower | replace {search, replace, regex}
+//           wrap {maxWidth (dots), fontSize=27, fontWidth, maxLines}  multi-line text for ^FB fields
+//           line {maxChars, line: 1|2}  (old character-based split, kept for existing configs)
 //
 // Rules are evaluated in object order, so `field` / `template` can use keys defined above.
 
@@ -71,7 +75,7 @@ function readSource(rule, page, values) {
     case 'template':
       return interpolate(rule.value, values);
     default:
-      throw new Error(`Unbekannte Quelle „${rule.from}“`);
+      throw new Error(`Unknown source “${rule.from}”`);
   }
 }
 
@@ -84,10 +88,12 @@ function applyOp(op, value) {
       return op.regex
         ? value.replace(new RegExp(op.search, 'g'), op.replace ?? '')
         : value.split(op.search).join(op.replace ?? '');
+    case 'wrap':
+      return wrapText(value, op);
     case 'line':
       return splitName(value, op.maxChars ?? 11)[(op.line ?? 1) - 1] ?? '';
     default:
-      throw new Error(`Unbekannte Operation „${op.op}“`);
+      throw new Error(`Unknown operation “${op.op}”`);
   }
 }
 
@@ -103,7 +109,7 @@ export async function extractFields(rules, page, resolvePage) {
     try {
       let raw;
       if (PAGE_SOURCES.has(rule.from)) {
-        if (!resolvePage) throw new Error('nur im Popup auf der Seite verfügbar');
+        if (!resolvePage) throw new Error('only available in the popup on the page');
         raw = await resolvePage({ ...rule, url: rule.url && interpolate(rule.url, values) });
       } else {
         raw = readSource(rule, page, values);
@@ -160,7 +166,7 @@ export async function pageExtract(rule) {
       const value = String(rule.path || '').split('.').filter(Boolean).reduce((obj, key) => obj?.[key], data);
       return { value: value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value) };
     }
-    return { error: `Unbekannte Seiten-Quelle „${rule.from}“` };
+    return { error: `Unknown page source “${rule.from}”` };
   } catch (error) {
     return { error: error.message };
   }

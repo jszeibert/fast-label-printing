@@ -5,7 +5,10 @@ export const mmToDots = (mm, dpmm) => Math.round(Number(mm || 0) * dpmm);
 const SENSING_CMD = { gap: '^MNY', mark: '^MNM', continuous: '^MNN' };
 
 // ^ and ~ would start a new ZPL command inside field data.
-const sanitize = value => String(value ?? '').replace(/[\^~]/g, ' ');
+// Line breaks become \& – the line break of a ^FB field block (multi-line fields).
+const sanitize = value => String(value ?? '')
+  .replace(/[\^~]/g, ' ')
+  .replace(/\r?\n/g, '\\&');
 
 export function fillPlaceholders(zpl, values) {
   return zpl.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_, key) => sanitize(values[key]));
@@ -49,10 +52,10 @@ export function compileLabel({ layout, format, printer, values = {}, copies = 1 
 export function checkCompatibility({ layout, format, printer }) {
   const warnings = [];
   if (format.media === 'direct' && printer.printMethod === 'transfer') {
-    warnings.push(`„${format.name}“ ist Thermodirekt-Papier, „${printer.name}“ ist als Thermotransfer-Drucker eingestellt.`);
+    warnings.push(`“${format.name}” is direct thermal paper, but “${printer.name}” is set up as a thermal transfer printer.`);
   }
   if (layout.dpmm && printer.dpmm && Number(layout.dpmm) !== Number(printer.dpmm)) {
-    warnings.push(`Layout ist für ${layout.dpmm} dpmm gebaut, „${printer.name}“ hat ${printer.dpmm} dpmm – Positionen und Größen stimmen nicht.`);
+    warnings.push(`The template is built for ${layout.dpmm} dpmm, “${printer.name}” has ${printer.dpmm} dpmm – positions and sizes will be off.`);
   }
   return warnings;
 }

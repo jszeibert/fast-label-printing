@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createDefaultLibrary, migrateFromV2, normalizeLibrary, findReferences, byId,
-  LEGACY_DEFAULT_TEMPLATE, INVENTORY_ZPL, TEXT_LABEL_ZPL, parseReplaceList, convertLegacyPlaceholders
+  LEGACY_DEFAULT_TEMPLATE, INVENTORY_ZPL, TEXT_LABEL_ZPL, parseReplaceList, convertLegacyPlaceholders,
+  formatFieldList, parseFieldList
 } from '../src/lib/model.js';
 
 function assertConsistent(lib) {
@@ -34,16 +35,41 @@ test('default jobs: I-Doit, Netbox and manual inventory share the QR layout; tex
   assert.match(byId(lib.layouts, 'layout-inventory').zpl, /\{\{qr\}\}/);
 });
 
-test('text label 75x50 has exactly two single-line fields', () => {
+test('inventory label: one multi-line name field the printer never wraps by itself', () => {
+  const layout = byId(createDefaultLibrary().layouts, 'layout-inventory');
+  assert.deepEqual(layout.fields, [
+    { key: 'id', label: 'ID' },
+    { key: 'type', label: 'Type' },
+    { key: 'name', label: 'Name', multiline: true }
+  ]);
+  assert.match(layout.zpl, /\^FB1000,3,8,L\^FD\{\{name\}\}/); // block far wider than the label
+  assert.doesNotMatch(layout.zpl, /line1|line2/);
+});
+
+test('text label 75x50: single-line headline, auto-wrapping multi-line second line', () => {
   const lib = createDefaultLibrary();
   const layout = byId(lib.layouts, 'layout-text-75x50');
   const format = byId(lib.formats, 'fmt-text-75x50');
-  assert.deepEqual(layout.fields.map(field => field.key), ['line1', 'line2']);
+  assert.deepEqual(layout.fields, [
+    { key: 'line1', label: 'Headline' },
+    { key: 'line2', label: 'Line 2', multiline: true }
+  ]);
   assert.equal(format.offsetXMm, 0);
   assert.equal(format.offsetYMm, 5);
   assert.equal(layout.zpl, TEXT_LABEL_ZPL);
   assert.doesNotMatch(layout.zpl, /line3/);
-  assert.equal((layout.zpl.match(/\^FB840,1,/g) ?? []).length, 2);
+  assert.match(layout.zpl, /\^FB840,1,0,C\^FD\{\{line1\}\}/);
+  assert.match(layout.zpl, /\^FB840,3,10,C\^FD\{\{line2\}\}/);
+});
+
+test('field list text round-trips, "| multiline" marks multi-line fields', () => {
+  const fields = [{ key: 'id', label: 'ID' }, { key: 'name', label: 'Name = Device', multiline: true }];
+  assert.equal(formatFieldList(fields), 'id = ID\nname = Name = Device | multiline');
+  assert.deepEqual(parseFieldList(formatFieldList(fields)), fields);
+  assert.deepEqual(parseFieldList('  text  \n\nnote = Note |Multiline '), [
+    { key: 'text', label: 'text' },
+    { key: 'note', label: 'Note', multiline: true }
+  ]);
 });
 
 test('migrates v2 settings with unchanged default template', () => {
@@ -69,6 +95,9 @@ test('migrates v2 settings with unchanged default template', () => {
 test('migration keeps a custom template and converts placeholders', () => {
   const lib = migrateFromV2({ 'zpl-template': '^XA^FO1,1^FD{ID} {line1}^FS^XZ', 'printer-url': 'x' });
   assert.equal(lib.layouts[0].zpl, '^XA^FO1,1^FD{{id}} {{line1}}^FS^XZ');
+  // the custom template still uses line1/line2, so those fields and rules stay
+  assert.deepEqual(lib.layouts[0].fields.map(field => field.key), ['id', 'type', 'line1', 'line2']);
+  assert.ok(byId(lib.jobs, 'job-idoit-inventory').extract.line2);
 });
 
 test('parseReplaceList / convertLegacyPlaceholders', () => {
@@ -87,7 +116,7 @@ test('normalizeLibrary fills collections and rejects newer schemas', () => {
 
 test('findReferences reports users of an entity', () => {
   const lib = createDefaultLibrary();
-  assert.deepEqual(findReferences(lib, 'formats', 'fmt-inventory'), ['Inventarlabel (QR)']);
+  assert.deepEqual(findReferences(lib, 'formats', 'fmt-inventory'), ['Inventory label (QR)']);
   assert.equal(findReferences(lib, 'layouts', 'layout-inventory').length, 3);
   assert.deepEqual(findReferences(lib, 'formats', 'fmt-dymo-14681'), []);
 });

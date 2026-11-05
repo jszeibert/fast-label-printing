@@ -5,7 +5,7 @@ import { hasTrigger, matchesTrigger, extractFields, recomputeDerived, pageExtrac
 import { compileLabel, checkCompatibility } from '../lib/zpl.js';
 import { buildPreviewUrl } from '../lib/preview.js';
 import { ManualLabelValues } from '../lib/manual-values.js';
-import { availableJobs, pickInitialJob, initialValues, toggledDefaultJobId } from '../lib/job-selection.js';
+import { availableJobs, pickInitialJob, initialValues, toggledDefaultJobId, hasFieldValues } from '../lib/job-selection.js';
 
 const $ = id => document.getElementById(id);
 
@@ -54,16 +54,16 @@ function updateDefaultButtons() {
   jobBtn.hidden = hasTrigger(job.trigger); // only manual jobs can be the default
   jobBtn.textContent = isDefaultJob ? '★' : '☆';
   jobBtn.title = isDefaultJob
-    ? 'Standard-Labeldruck – klicken zum Entfernen'
-    : 'Als Standard-Labeldruck festlegen (im Popup vorausgewählt)';
+    ? 'Default label job – click to remove'
+    : 'Set as default label job (preselected in the popup)';
 
   const printerId = $('printer-select').value;
   const isDefaultPrinter = printerId === job.printerId;
   printerBtn.hidden = !printerId;
   printerBtn.textContent = isDefaultPrinter ? '★' : '☆';
   printerBtn.title = isDefaultPrinter
-    ? `Standard-Drucker für „${job.name}“`
-    : `Als Standard-Drucker für „${job.name}“ festlegen`;
+    ? `Default printer for “${job.name}”`
+    : `Set as default printer for “${job.name}”`;
 }
 
 async function persistDefault(apply, message) {
@@ -75,7 +75,7 @@ async function persistDefault(apply, message) {
   } catch (error) {
     library = previous;
     current.job = byId(library.jobs, current.job.id);
-    setStatus(`Standard konnte nicht gespeichert werden: ${error.message}`, 'error');
+    setStatus(`Could not save the default: ${error.message}`, 'error');
   }
   for (const option of $('job-select').options) {
     const job = byId(library.jobs, option.value);
@@ -90,7 +90,7 @@ function toggleDefaultJob() {
   const next = toggledDefaultJobId(library.settings.defaultJobId, job);
   persistDefault(
     () => { library.settings.defaultJobId = next; },
-    next ? `„${job.name}“ ist jetzt Standard-Labeldruck.` : 'Standard-Labeldruck entfernt.'
+    next ? `“${job.name}” is now the default label job.` : 'Default label job removed.'
   );
 }
 
@@ -100,20 +100,20 @@ function setDefaultPrinter() {
   const { job } = current;
   persistDefault(
     () => { job.printerId = printer.id; },
-    `„${printer.name}“ ist jetzt Standard-Drucker für „${job.name}“.`
+    `“${printer.name}” is now the default printer for “${job.name}”.`
   );
 }
 
 // Evaluates css/api rules inside the current tab (uses the user's logged-in session).
 async function resolvePage(rule) {
-  if (page.tabId == null) throw new Error('kein Tab');
+  if (page.tabId == null) throw new Error('no tab');
   const [injection] = await browserAPI.scripting.executeScript({
     target: { tabId: page.tabId },
     func: pageExtract,
     args: [rule]
   });
   const result = injection?.result;
-  if (!result) throw new Error('keine Antwort von der Seite');
+  if (!result) throw new Error('no response from the page');
   if (result.error) throw new Error(result.error);
   return result.value;
 }
@@ -127,12 +127,12 @@ async function selectJob(jobId) {
     current = null;
     $('fields').replaceChildren();
     updateDefaultButtons();
-    return setStatus('Labeldruck unvollständig: Layout oder Format fehlt.', 'error');
+    return setStatus('Label job incomplete: template or label type is missing.', 'error');
   }
 
   // Page sources only run for jobs bound to this page.
   const onPage = matchesTrigger(job.trigger, page.url);
-  setStatus('Daten werden gelesen …', 'loading');
+  setStatus('Reading data …', 'loading');
   const { values, errors } = await extractFields(job.extract, page, onPage ? resolvePage : undefined);
   if (token !== selectToken) return; // another job was selected meanwhile
   const isManual = !hasTrigger(job.trigger);
@@ -145,13 +145,13 @@ async function selectJob(jobId) {
   if (byId(library.printers, job.printerId)) $('printer-select').value = job.printerId;
   $('clear-fields-btn').hidden = !isManual;
   $('format-info').textContent =
-    `${layout.name} · ${format.name}${format.shape === 'round' ? ' (rund)' : ''}`;
+    `${layout.name} · ${format.name}${format.shape === 'round' ? ' (round)' : ''}`;
   shapePreview(format);
 
   renderFields();
   update();
   updateDefaultButtons();
-  setStatus(errors.length ? `Extraktion: ${errors.join('; ')}` : '', errors.length ? 'error' : 'info');
+  setStatus(errors.length ? `Extraction: ${errors.join('; ')}` : '', errors.length ? 'error' : 'info');
 }
 
 // Preview box takes the label's aspect ratio (and is round for round labels).
@@ -184,17 +184,25 @@ function schedulePreview(printer) {
   previewTimer = setTimeout(() => loadPreview(printer), 400);
 }
 
+// All fields empty: show a hint instead of calling the preview service.
+function clearPreview() {
+  clearTimeout(previewTimer);
+  previewRequest++; // ignore a preview that is still loading
+  $('preview-img').hidden = true;
+  $('preview-msg').textContent = 'Enter values to see a preview';
+}
+
 function loadPreview(printer) {
   const img = $('preview-img');
   const msg = $('preview-msg');
   const url = buildPreviewUrl(library.settings.previewApiUrl, { printer, format: current.format, zpl });
   if (!url) {
     img.hidden = true;
-    msg.textContent = 'Keine Vorschau-URL eingestellt';
+    msg.textContent = 'No preview URL configured';
     return;
   }
   const request = ++previewRequest;
-  msg.textContent = 'Vorschau wird geladen …';
+  msg.textContent = 'Loading preview …';
   const next = new Image();
   next.onload = () => {
     if (request !== previewRequest) return;
@@ -205,7 +213,7 @@ function loadPreview(printer) {
   next.onerror = () => {
     if (request !== previewRequest) return;
     img.hidden = true;
-    msg.textContent = 'Vorschau fehlgeschlagen – Vorschau-URL in den Einstellungen prüfen';
+    msg.textContent = 'Preview failed – check the preview URL in the settings';
   };
   next.src = url;
 }
@@ -219,9 +227,11 @@ function renderFields() {
     const label = document.createElement('label');
     label.textContent = field.label || field.key;
     label.htmlFor = `field-${field.key}`;
-    const input = document.createElement('input');
+    wrapper.classList.toggle('multiline', Boolean(field.multiline));
+    const input = document.createElement(field.multiline ? 'textarea' : 'input');
     input.id = `field-${field.key}`;
     input.value = current.values[field.key] ?? '';
+    if (field.multiline) input.rows = Math.max(2, input.value.split('\n').length);
     input.addEventListener('input', () => {
       current.values[field.key] = input.value;
       current.edited.add(field.key);
@@ -229,7 +239,7 @@ function renderFields() {
       syncInputs(field.key);
       if (!hasTrigger(current.job.trigger)) {
         manualValues.save(current.job.id, current.values).catch(error => {
-          setStatus(`Manuelle Texte konnten nicht gespeichert werden: ${error.message}`, 'error');
+          setStatus(`Could not save manual texts: ${error.message}`, 'error');
         });
       }
       update();
@@ -247,9 +257,9 @@ async function clearManualValues() {
     current.edited.clear();
     renderFields();
     update();
-    setStatus('Manuelle Eingaben gelöscht.', 'success');
+    setStatus('Manual inputs cleared.', 'success');
   } catch (error) {
-    setStatus(`Manuelle Texte konnten nicht gelöscht werden: ${error.message}`, 'error');
+    setStatus(`Could not clear manual texts: ${error.message}`, 'error');
   }
 }
 
@@ -276,10 +286,11 @@ function update() {
   const { layout, format, values } = current;
   zpl = compileLabel({ layout, format, printer, values, copies: $('copies').value });
   $('zpl-output').textContent = zpl;
-  schedulePreview(printer);
+  if (hasFieldValues(layout, values)) schedulePreview(printer);
+  else clearPreview();
 
   const hints = checkCompatibility({ layout, format, printer });
-  if (!printer.url) hints.unshift(`Für „${printer.name}“ ist keine URL eingetragen.`);
+  if (!printer.url) hints.unshift(`No URL is set for “${printer.name}”.`);
   for (const hint of hints) {
     const li = document.createElement('li');
     li.textContent = `⚠️ ${hint}`;
@@ -291,13 +302,13 @@ function update() {
 async function print() {
   const printer = byId(library.printers, $('printer-select').value);
   if (!zpl || !printer?.url) return;
-  setStatus('Drucke …', 'loading');
+  setStatus('Printing …', 'loading');
   $('print-btn').disabled = true;
   try {
     await sendToPrinter(printer.url, zpl);
-    setStatus(`An „${printer.name}“ gesendet.`, 'success');
+    setStatus(`Sent to “${printer.name}”.`, 'success');
   } catch (error) {
-    setStatus(`Druck fehlgeschlagen: ${error.message}`, 'error');
+    setStatus(`Printing failed: ${error.message}`, 'error');
   } finally {
     $('print-btn').disabled = false;
   }
@@ -312,7 +323,7 @@ async function init() {
     manualValues = new ManualLabelValues(browserAPI.storage.local);
     await manualValues.load();
   } catch (error) {
-    return setStatus(`Einstellungen oder manuelle Texte konnten nicht geladen werden: ${error.message}`, 'error');
+    return setStatus(`Could not load settings or manual texts: ${error.message}`, 'error');
   }
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
@@ -326,8 +337,8 @@ async function init() {
   }
 
   const jobSelect = $('job-select');
-  addOptions(jobSelect, matched, 'Passend zu dieser Seite');
-  addOptions(jobSelect, manual, 'Manuell');
+  addOptions(jobSelect, matched, 'Matching this page');
+  addOptions(jobSelect, manual, 'Manual');
 
   const printerSelect = $('printer-select');
   for (const printer of library.printers) printerSelect.append(new Option(printer.name, printer.id));
