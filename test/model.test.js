@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createDefaultLibrary, migrateFromV2, normalizeLibrary, findReferences, byId,
-  LEGACY_DEFAULT_TEMPLATE, INVENTORY_ZPL, parseReplaceList, convertLegacyPlaceholders
+  LEGACY_DEFAULT_TEMPLATE, INVENTORY_ZPL, TEXT_LABEL_ZPL, parseReplaceList, convertLegacyPlaceholders
 } from '../src/lib/model.js';
 
 function assertConsistent(lib) {
@@ -32,6 +32,18 @@ test('default jobs: I-Doit, Netbox and manual inventory share the QR layout; tex
   assert.equal(text.printerId, lib.printers[1].id);
   assert.notEqual(text.printerId, byId(lib.jobs, 'job-manual-inventory').printerId);
   assert.match(byId(lib.layouts, 'layout-inventory').zpl, /\{\{qr\}\}/);
+});
+
+test('text label 75x50 has exactly two single-line fields', () => {
+  const lib = createDefaultLibrary();
+  const layout = byId(lib.layouts, 'layout-text-75x50');
+  const format = byId(lib.formats, 'fmt-text-75x50');
+  assert.deepEqual(layout.fields.map(field => field.key), ['line1', 'line2']);
+  assert.equal(format.offsetXMm, 0);
+  assert.equal(format.offsetYMm, 5);
+  assert.equal(layout.zpl, TEXT_LABEL_ZPL);
+  assert.doesNotMatch(layout.zpl, /line3/);
+  assert.equal((layout.zpl.match(/\^FB840,1,/g) ?? []).length, 2);
 });
 
 test('migrates v2 settings with unchanged default template', () => {

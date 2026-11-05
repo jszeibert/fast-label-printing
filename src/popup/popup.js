@@ -4,10 +4,12 @@ import { byId } from '../lib/model.js';
 import { hasTrigger, matchesTrigger, extractFields, recomputeDerived, pageExtract } from '../lib/extract.js';
 import { compileLabel, checkCompatibility } from '../lib/zpl.js';
 import { buildPreviewUrl } from '../lib/preview.js';
+import { ManualLabelValues } from '../lib/manual-values.js';
 
 const $ = id => document.getElementById(id);
 
 let library;
+let manualValues;
 let page = { url: '', title: '', tabId: null };
 let current = null; // { job, layout, format, values, edited }
 let selectToken = 0;
@@ -71,9 +73,15 @@ async function selectJob(jobId) {
   setStatus('Daten werden gelesen …', 'loading');
   const { values, errors } = await extractFields(job.extract, page, onPage ? resolvePage : undefined);
   if (token !== selectToken) return; // another job was selected meanwhile
-  current = { job, layout, format, values, edited: new Set() };
+  const isManual = !hasTrigger(job.trigger);
+  current = {
+    job, layout, format,
+    values: isManual ? { ...values, ...manualValues.get(job.id) } : values,
+    edited: new Set()
+  };
 
   if (byId(library.printers, job.printerId)) $('printer-select').value = job.printerId;
+  $('clear-fields-btn').hidden = !isManual;
   $('format-info').textContent =
     `${layout.name} · ${format.name}${format.shape === 'round' ? ' (rund)' : ''}`;
   shapePreview(format);
@@ -142,10 +150,29 @@ function renderFields() {
       current.edited.add(field.key);
       current.values = recomputeDerived(current.job.extract, current.values, current.edited);
       syncInputs(field.key);
+      if (!hasTrigger(current.job.trigger)) {
+        manualValues.save(current.job.id, current.values).catch(error => {
+          setStatus(`Manuelle Texte konnten nicht gespeichert werden: ${error.message}`, 'error');
+        });
+      }
       update();
     });
     wrapper.append(label, input);
     container.append(wrapper);
+  }
+}
+
+async function clearManualValues() {
+  if (!current || hasTrigger(current.job.trigger)) return;
+  try {
+    await manualValues.clear(current.job.id);
+    current.values = Object.fromEntries((current.layout.fields || []).map(field => [field.key, '']));
+    current.edited.clear();
+    renderFields();
+    update();
+    setStatus('Manuelle Eingaben gelöscht.', 'success');
+  } catch (error) {
+    setStatus(`Manuelle Texte konnten nicht gelöscht werden: ${error.message}`, 'error');
   }
 }
 
@@ -205,8 +232,10 @@ async function init() {
 
   try {
     library = await loadLibrary();
+    manualValues = new ManualLabelValues(browserAPI.storage.local);
+    await manualValues.load();
   } catch (error) {
-    return setStatus(`Einstellungen konnten nicht geladen werden: ${error.message}`, 'error');
+    return setStatus(`Einstellungen oder manuelle Texte konnten nicht geladen werden: ${error.message}`, 'error');
   }
 
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
@@ -229,6 +258,7 @@ async function init() {
   printerSelect.addEventListener('change', update);
   $('copies').addEventListener('input', update);
   $('print-btn').addEventListener('click', print);
+  $('clear-fields-btn').addEventListener('click', clearManualValues);
 
   $('main').hidden = false;
   // Matching job first; otherwise the default job (if it is a manual one); else first manual.

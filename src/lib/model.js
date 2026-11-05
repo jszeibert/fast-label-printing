@@ -48,10 +48,8 @@ export const DEFAULT_PREVIEW_URL = 'https://api.labelary.com/v1/printers/{dpmm}d
 // ^CI28 = UTF-8 (umlauts), ^FB = field block: centred, wraps / clips inside the label.
 export const TEXT_LABEL_ZPL = `^XA
 ^CI28
-^FO30,30^A0N,90,90^FB840,2,0,C^FD{{line1}}^FS
-^FO30,225^GB840,4,4^FS
-^FO30,255^A0N,60,60^FB840,2,0,C^FD{{line2}}^FS
-^FO30,400^A0N,45,45^FB840,3,0,C^FD{{line3}}^FS
+^FO30,150^A0N,90,90^FB840,1,0,C^FD{{line1}}^FS
+^FO30,340^A0N,60,60^FB840,1,0,C^FD{{line2}}^FS
 ^XZ`;
 
 export const PRINT_METHODS = ['direct', 'transfer'];
@@ -66,8 +64,7 @@ export function newId(prefix = 'id') {
 
 const TEXT_FIELDS = [
   { key: 'line1', label: 'Überschrift' },
-  { key: 'line2', label: 'Zeile 2' },
-  { key: 'line3', label: 'Zeile 3' }
+  { key: 'line2', label: 'Zeile 2' }
 ];
 
 const INVENTORY_FIELDS = [
@@ -123,7 +120,7 @@ function defaultFormats() {
       // Box / text labels on the thermal transfer printer.
       id: 'fmt-text-75x50', name: 'Textlabel 75×50 mm', articleNo: '',
       widthMm: 75, lengthMm: 50, shape: 'rect', media: 'any',
-      sensing: '', offsetXMm: 0, offsetYMm: 0
+      sensing: '', offsetXMm: 0, offsetYMm: 5
     },
     {
       id: 'fmt-dymo-s0722540', name: 'Dymo S0722540 57×32 mm', articleNo: 'S0722540',

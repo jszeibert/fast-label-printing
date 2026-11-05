@@ -147,6 +147,22 @@ select:focus {
   display: none;
 }
 
+.clear-btn {
+  display: block;
+  margin: -4px 0 10px auto;
+  padding: 3px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #555;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: #f4f4f4;
+}
+
 .warnings {
   list-style: none;
   padding: 0;

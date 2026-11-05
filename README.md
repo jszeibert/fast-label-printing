@@ -32,6 +32,7 @@ Browser extension for printing labels (ZPL) on Zebra printers – filled automat
 - **Templates**: ZPL with `{{field}}` placeholders; fields become inputs in the popup
 - **Label jobs**: template + printer + optional website trigger + extraction rules
 - **Manual jobs**: jobs without website are always selectable in the popup
+- **Manual text**: entries are saved per manual label and remain until cleared with the popup's clear button
 - **Import / Export** of the whole configuration as JSON
 - Settings from v2 are migrated automatically
 
