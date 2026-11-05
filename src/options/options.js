@@ -1,7 +1,6 @@
 import { loadLibrary, saveLibrary, sendToPrinter } from '../lib/store.js';
 import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL, formatFieldList, parseFieldList } from '../lib/model.js';
 import { buildPreviewUrl } from '../lib/preview.js';
-import { extractFields, matchesTrigger, hasTrigger } from '../lib/extract.js';
 import { mmToDots } from '../lib/zpl.js';
 
 const $ = id => document.getElementById(id);
@@ -49,7 +48,6 @@ const ENTITIES = {
   },
 
   formats: {
-    help: 'Physical labels. Width/length produce ^PW/^LL – they are no longer part of the template.',
     prefix: 'fmt',
     create: () => ({ name: 'New label type', articleNo: '', widthMm: 50, lengthMm: 25, shape: 'rect', media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 }),
     fields: [
@@ -98,8 +96,7 @@ const ENTITIES = {
       { key: 'trigger.urlContains', label: 'URL must contain', type: 'text', placeholder: 'objID' },
       { key: 'trigger.urlRegex', label: 'URL must match (regex)', type: 'text', placeholder: '/dcim/devices/\\d+/', help: 'Only applies in addition to the website.' },
       { key: 'extract', label: 'Extraction (JSON)', type: 'json', rows: 12, help: EXTRACT_HELP }
-    ],
-    extraPanel: renderExtractionTester
+    ]
   }
 };
 
@@ -193,7 +190,6 @@ function renderForm() {
   const entity = byId(library[activeTab], selectedId);
   form.replaceChildren();
   $('extra-actions').replaceChildren();
-  $('extra-panel').replaceChildren();
 
   const hasEntity = Boolean(entity);
   for (const id of ['save-btn', 'duplicate-btn', 'delete-btn']) $(id).hidden = !hasEntity;
@@ -215,7 +211,6 @@ function renderForm() {
     button.addEventListener('click', () => action.run(entity));
     $('extra-actions').append(button);
   }
-  def.extraPanel?.($('extra-panel'), entity);
 }
 
 function renderList() {
@@ -236,7 +231,7 @@ function render() {
   const isGeneral = activeTab === 'general';
   $('general').hidden = !isGeneral;
   $('editor').hidden = isGeneral;
-  $('tab-help').textContent = isGeneral ? '' : ENTITIES[activeTab].help;
+  $('tab-help').textContent = isGeneral ? '' : ENTITIES[activeTab].help ?? '';
   if (isGeneral) {
     renderGeneral();
     return;
@@ -350,56 +345,18 @@ async function testFrame() {
   }
 }
 
-// Lets the user try trigger + extraction rules against a sample URL / page title.
-function renderExtractionTester(container) {
-  const url = el('input', { type: 'url', placeholder: 'https://idoit.example.com/?objID=123' });
-  const title = el('input', { type: 'text', placeholder: 'i-doit > Server > srv-backup-01' });
-  const output = el('pre', { className: 'test-results' });
-  const button = el('button', { type: 'button', className: 'btn btn-secondary' }, 'Test');
-
-  button.addEventListener('click', async () => {
-    let job;
-    try {
-      job = readForm(byId(library.jobs, selectedId));
-    } catch (error) {
-      output.textContent = `❌ ${error.message}`;
-      return;
-    }
-    const page = { url: url.value.trim(), title: title.value };
-    const { values, errors } = await extractFields(job.extract, page);
-    const triggered = matchesTrigger(job.trigger, page.url);
-    output.textContent = [
-      job.trigger?.urlPrefix ? `Trigger: ${triggered ? '✅ matches' : '❌ does not match'}` : 'Trigger: – (manual label job)',
-      ...errors.map(e => `❌ ${e}`),
-      JSON.stringify(values, null, 2)
-    ].join('\n');
-  });
-
-  container.append(el('div', { className: 'section tester' },
-    el('h3', {}, 'Test extraction'),
-    el('div', { className: 'form-group' }, el('label', {}, 'Sample URL'), url),
-    el('div', { className: 'form-group' }, el('label', {}, 'Sample page title'), title),
-    button,
-    output));
-}
-
 // ---------------------------------------------------------------------------
 // General settings
 // ---------------------------------------------------------------------------
 
 function renderGeneral() {
   $('preview-api-url').value = library.settings.previewApiUrl ?? '';
-  const select = $('default-job');
-  select.replaceChildren(new Option('– none (first manual label job) –', ''));
-  for (const job of library.jobs.filter(j => !hasTrigger(j.trigger))) select.append(new Option(job.name, job.id));
-  select.value = byId(library.jobs, library.settings.defaultJobId) ? library.settings.defaultJobId : '';
 }
 
 async function saveGeneral() {
   library.settings = {
     ...library.settings,
-    previewApiUrl: $('preview-api-url').value.trim(),
-    defaultJobId: $('default-job').value
+    previewApiUrl: $('preview-api-url').value.trim()
   };
   await persist('Saved.');
 }
