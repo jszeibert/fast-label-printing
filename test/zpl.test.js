@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compileLabel, buildHeader, fillPlaceholders, checkCompatibility } from '../src/lib/zpl.js';
+import { compileLabel, buildHeader, fillPlaceholders, checkCompatibility, compileTestFrame, compileTestPrint } from '../src/lib/zpl.js';
 
 const printer = { name: 'P', dpmm: 12, printMethod: 'direct', darkness: null, speed: null };
 const format = { name: 'F', widthMm: 23.9, lengthMm: 14, media: 'any', sensing: '', offsetXMm: 0, offsetYMm: 0 };
@@ -40,4 +40,20 @@ test('compatibility warnings', () => {
     printer: { ...printer, printMethod: 'transfer' }
   });
   assert.equal(warnings.length, 2);
+});
+
+test('test frame: edge frame plus one 0.5 mm inside, with printer settings and offsets', () => {
+  const printer12 = { dpmm: 12, darkness: 20, speed: 3 };
+  const rect = { widthMm: 25, lengthMm: 14, shape: 'rect', offsetXMm: 0, offsetYMm: 5 };
+  assert.equal(compileTestFrame(rect, printer12),
+    '~SD20\n^XA\n^PW300^LL168^LH0,60^PR3\n^FO0,0^GB300,168,4^FS\n^FO6,6^GB288,156,4^FS\n^XZ');
+
+  const round = { widthMm: 57, lengthMm: 57, shape: 'round', offsetXMm: 0, offsetYMm: 0 };
+  assert.equal(compileTestFrame(round, { dpmm: 8 }),
+    '^XA\n^PW456^LL456\n^FO0,0^GC456,3,B^FS\n^FO4,4^GC448,3,B^FS\n^XZ');
+});
+
+test('printer test print: "+" with its top-left corner at dot (1,1), then the printer name', () => {
+  assert.equal(compileTestPrint('Zebra ^1~'),
+    '^XA\n^FO1,15^GB31,3,3^FS\n^FO15,1^GB3,31,3^FS\n^FO45,20^A0N,30,30^FDZebra  1 ^FS\n^FO45,60^A0N,25,25^FDTest print^FS\n^XZ');
 });

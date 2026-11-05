@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createDefaultLibrary, migrateFromV2, normalizeLibrary, findReferences, byId,
   LEGACY_DEFAULT_TEMPLATE, INVENTORY_ZPL, TEXT_LABEL_ZPL, parseReplaceList, convertLegacyPlaceholders,
-  formatFieldList, parseFieldList
+  formatFieldList, parseFieldList, printerForFormat
 } from '../src/lib/model.js';
 
 function assertConsistent(lib) {
@@ -119,4 +119,16 @@ test('findReferences reports users of an entity', () => {
   assert.deepEqual(findReferences(lib, 'formats', 'fmt-inventory'), ['Inventory label (QR)']);
   assert.equal(findReferences(lib, 'layouts', 'layout-inventory').length, 3);
   assert.deepEqual(findReferences(lib, 'formats', 'fmt-dymo-14681'), []);
+});
+
+test('test frame printer: default printer of a job using the label type, else first printer with URL', () => {
+  const lib = createDefaultLibrary();
+  assert.equal(printerForFormat(lib, 'fmt-text-75x50').id, lib.printers[1].id); // text label printer
+  assert.equal(printerForFormat(lib, 'fmt-inventory').id, lib.printers[0].id);
+  assert.equal(printerForFormat(lib, 'fmt-dymo-14681').id, lib.printers[0].id); // unused label type
+
+  lib.printers[1].url = ''; // a printer without URL cannot print
+  assert.equal(printerForFormat(lib, 'fmt-text-75x50').id, lib.printers[0].id);
+  lib.printers[0].url = '';
+  assert.equal(printerForFormat(lib, 'fmt-text-75x50'), null);
 });

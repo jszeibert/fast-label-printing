@@ -183,6 +183,16 @@ header h1 {
   display: contents;
 }
 
+.form-actions .action-select {
+  width: auto;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+
 #delete-btn {
   margin-left: auto;
 }

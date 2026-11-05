@@ -48,6 +48,39 @@ export function compileLabel({ layout, format, printer, values = {}, copies = 1 
   return body;
 }
 
+// Printer test print: a "+" whose top-left corner is at dot (1,1) – shows where the printer's
+// origin lands on the label – plus the printer name.
+export function compileTestPrint(printerName) {
+  const size = 31; // odd, so the bars cross in the middle
+  const bar = 3;
+  const mid = 1 + (size - bar) / 2;
+  return [
+    '^XA',
+    `^FO1,${mid}^GB${size},${bar},${bar}^FS`,
+    `^FO${mid},1^GB${bar},${size},${bar}^FS`,
+    `^FO45,20^A0N,30,30^FD${sanitize(printerName)}^FS`,
+    '^FO45,60^A0N,25,25^FDTest print^FS',
+    '^XZ'
+  ].join('\n');
+}
+
+// Test frame for a label type: one frame on the label edge and one 0.5 mm inside, so it stays
+// visible even if the edge is slightly off. Uses the printer's darkness/speed like a real label.
+export function compileTestFrame(format, printer) {
+  const dpmm = Number(printer.dpmm) || 12;
+  const w = mmToDots(format.widthMm, dpmm);
+  const l = mmToDots(format.lengthMm, dpmm);
+  const inset = mmToDots(0.5, dpmm);
+  const thickness = Math.max(3, mmToDots(0.3, dpmm));
+  const frame = (offset) => {
+    const fo = `^FO${offset},${offset}`;
+    return format.shape === 'round'
+      ? `${fo}^GC${Math.min(w, l) - 2 * offset},${thickness},B^FS`
+      : `${fo}^GB${w - 2 * offset},${l - 2 * offset},${thickness}^FS`;
+  };
+  return compileLabel({ layout: { zpl: `^XA\n${frame(0)}\n${frame(inset)}\n^XZ` }, format, printer });
+}
+
 // Non-blocking hints shown before printing.
 export function checkCompatibility({ layout, format, printer }) {
   const warnings = [];

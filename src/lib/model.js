@@ -310,6 +310,18 @@ export function parseFieldList(text) {
   });
 }
 
+// Printer to preselect for a test print of a label type: the default printer of the first
+// label job whose template uses this label type, otherwise the first printer with a URL.
+export function printerForFormat(lib, formatId) {
+  const usable = lib.printers.filter(printer => printer.url);
+  const layoutIds = new Set(lib.layouts.filter(layout => layout.formatId === formatId).map(layout => layout.id));
+  const fromJob = lib.jobs
+    .filter(job => layoutIds.has(job.layoutId))
+    .map(job => usable.find(printer => printer.id === job.printerId))
+    .find(Boolean);
+  return fromJob ?? usable[0] ?? null;
+}
+
 // Which entities reference the given entity? Used to block deleting things still in use.
 export function findReferences(lib, collection, id) {
   const refs = {

@@ -1,7 +1,7 @@
 import { loadLibrary, saveLibrary, sendToPrinter } from '../lib/store.js';
-import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL, formatFieldList, parseFieldList } from '../lib/model.js';
+import { createDefaultLibrary, normalizeLibrary, findReferences, newId, byId, DEFAULT_PREVIEW_URL, formatFieldList, parseFieldList, printerForFormat } from '../lib/model.js';
 import { buildPreviewUrl } from '../lib/preview.js';
-import { mmToDots } from '../lib/zpl.js';
+import { mmToDots, compileTestFrame, compileTestPrint } from '../lib/zpl.js';
 
 const $ = id => document.getElementById(id);
 
@@ -61,7 +61,7 @@ const ENTITIES = {
       { key: 'offsetXMm', label: 'Offset X (mm)', type: 'number', step: 0.1, min: 0, help: 'Moves the origin (^LH), for fine adjustment.' },
       { key: 'offsetYMm', label: 'Offset Y (mm)', type: 'number', step: 0.1, min: 0 }
     ],
-    actions: [{ label: 'Print test frame', run: testFrame }]
+    actions: [{ label: 'Print test frame', run: testFrame, printer: format => printerForFormat(library, format.id) }]
   },
 
   layouts: {
@@ -207,8 +207,16 @@ function renderForm() {
   }
 
   for (const action of def.actions || []) {
+    // Actions with `printer` get a printer selection (preselected by that function).
+    let printerSelect;
+    if (action.printer) {
+      printerSelect = el('select', { className: 'action-select', title: `Printer for “${action.label}”` });
+      for (const printer of library.printers.filter(p => p.url)) printerSelect.append(new Option(printer.name, printer.id));
+      printerSelect.value = action.printer(entity)?.id ?? '';
+      $('extra-actions').append(printerSelect);
+    }
     const button = el('button', { type: 'button', className: 'btn btn-secondary' }, action.label);
-    button.addEventListener('click', () => action.run(entity));
+    button.addEventListener('click', () => action.run(entity, printerSelect && byId(library.printers, printerSelect.value)));
     $('extra-actions').append(button);
   }
 }
@@ -311,7 +319,7 @@ async function testPrint(printer) {
   const url = $('f-url').value.trim();
   if (!url) return showStatus('Please enter a URL first.', 'error');
   try {
-    await sendToPrinter(url, `^XA^FO20,20^A0N,30,30^FD${printer.name.replace(/[\^~]/g, ' ')}^FS^FO20,60^A0N,25,25^FDTest print^FS^XZ`);
+    await sendToPrinter(url, compileTestPrint(printer.name));
     showStatus('Test print sent.', 'success');
   } catch (error) {
     showStatus(`Test print failed: ${error.message}`, 'error');
@@ -319,26 +327,18 @@ async function testPrint(printer) {
 }
 
 // Prints a border along the label edges – handy to check size and offsets.
-async function testFrame() {
+async function testFrame(_, printer) {
   let format;
   try {
     format = readForm(byId(library.formats, selectedId));
   } catch (error) {
     return showStatus(error.message, 'error');
   }
-  const printer = library.printers.find(p => p.url);
-  if (!printer) return showStatus('No printer with a URL available.', 'error');
+  if (!printer?.url) return showStatus('No printer with a URL available.', 'error');
   if (!confirm(`Print frame on “${printer.name}”?`)) return;
 
-  const w = mmToDots(format.widthMm, printer.dpmm);
-  const l = mmToDots(format.lengthMm, printer.dpmm);
-  const x = mmToDots(format.offsetXMm, printer.dpmm);
-  const y = mmToDots(format.offsetYMm, printer.dpmm);
-  const shape = format.shape === 'round'
-    ? `^FO0,0^GC${Math.min(w, l)},3,B^FS`
-    : `^FO0,0^GB${w},${l},3^FS`;
   try {
-    await sendToPrinter(printer.url, `^XA^PW${w}^LL${l}^LH${x},${y}${shape}^XZ`);
+    await sendToPrinter(printer.url, compileTestFrame(format, printer));
     showStatus(`Frame sent to “${printer.name}”.`, 'success');
   } catch (error) {
     showStatus(`Printing failed: ${error.message}`, 'error');
