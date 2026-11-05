@@ -1,15 +1,15 @@
-# Fast Label Printering
+# Fast Label printing
 
 Browser extension for printing labels (ZPL) on Zebra printers – filled automatically from I-Doit (and soon Netbox) or manually.
 
 ## 📥 Download
 
 ### Firefox
-- **Stable:** [Download from GitHub Pages](https://jszeibert.github.io/fast-label-printering/)
-- **Latest:** [Download from GitHub Releases](https://github.com/jszeibert/fast-label-printering/releases/latest)
+- **Stable:** [Download from GitHub Pages](https://jszeibert.github.io/fast-label-printing/)
+- **Latest:** [Download from GitHub Releases](https://github.com/jszeibert/fast-label-printing/releases/latest)
 
 ### Chrome/Edge
-- **Latest:** [Download ZIP from GitHub Releases](https://github.com/jszeibert/fast-label-printering/releases/latest)
+- **Latest:** [Download ZIP from GitHub Releases](https://github.com/jszeibert/fast-label-printing/releases/latest)
 
 ## 🚀 Installation
 
@@ -82,7 +82,7 @@ A job only triggers on its website (URL prefix); *URL contains* / *regex* narrow
 
 ### Local Development
 ```bash
-git clone https://github.com/jszeibert/fast-label-printering.git
+git clone https://github.com/jszeibert/fast-label-printing.git
 ```
 
 **Firefox:**
