@@ -1,22 +1,22 @@
 import { browserAPI } from './browser.js';
 import { createDefaultLibrary, migrateFromV2, normalizeLibrary, LEGACY_KEYS } from './model.js';
 
-const LIBRARY_KEY = 'library';
+export const LIBRARY_KEY = 'library';
 
 // Loads the library; on first run migrates v2 settings or creates defaults.
 // The old v2 keys are left untouched so a downgrade still works.
-export async function loadLibrary() {
-  const stored = await browserAPI.storage.local.get([LIBRARY_KEY, ...LEGACY_KEYS]);
+export async function loadLibrary(storage = browserAPI.storage.local) {
+  const stored = await storage.get([LIBRARY_KEY, ...LEGACY_KEYS]);
   if (stored[LIBRARY_KEY]) return normalizeLibrary(stored[LIBRARY_KEY]);
 
   const hasLegacy = LEGACY_KEYS.some(key => stored[key]);
   const library = hasLegacy ? migrateFromV2(stored) : createDefaultLibrary();
-  await saveLibrary(library);
+  await saveLibrary(library, storage);
   return library;
 }
 
-export async function saveLibrary(library) {
-  await browserAPI.storage.local.set({ [LIBRARY_KEY]: library });
+export async function saveLibrary(library, storage = browserAPI.storage.local) {
+  await storage.set({ [LIBRARY_KEY]: library });
 }
 
 // Match pattern for the printer host, e.g. http://10.0.0.5/pstprnt -> http://10.0.0.5/*

@@ -5,6 +5,7 @@ import { hasTrigger, matchesTrigger, extractFields, recomputeDerived, pageExtrac
 import { compileLabel, checkCompatibility } from '../lib/zpl.js';
 import { buildPreviewUrl } from '../lib/preview.js';
 import { ManualLabelValues } from '../lib/manual-values.js';
+import { availableJobs, pickInitialJob, initialValues, toggledDefaultJobId } from '../lib/job-selection.js';
 
 const $ = id => document.getElementById(id);
 
@@ -86,10 +87,10 @@ async function persistDefault(apply, message) {
 function toggleDefaultJob() {
   if (!current || hasTrigger(current.job.trigger)) return;
   const { job } = current;
-  const isDefault = library.settings.defaultJobId === job.id;
+  const next = toggledDefaultJobId(library.settings.defaultJobId, job);
   persistDefault(
-    () => { library.settings.defaultJobId = isDefault ? '' : job.id; },
-    isDefault ? 'Standard-Labeldruck entfernt.' : `„${job.name}“ ist jetzt Standard-Labeldruck.`
+    () => { library.settings.defaultJobId = next; },
+    next ? `„${job.name}“ ist jetzt Standard-Labeldruck.` : 'Standard-Labeldruck entfernt.'
   );
 }
 
@@ -101,14 +102,6 @@ function setDefaultPrinter() {
     () => { job.printerId = printer.id; },
     `„${printer.name}“ ist jetzt Standard-Drucker für „${job.name}“.`
   );
-}
-
-// Jobs bound to this website + jobs without URL (manual). Jobs of other sites are hidden.
-function availableJobs() {
-  return {
-    matched: library.jobs.filter(job => matchesTrigger(job.trigger, page.url)),
-    manual: library.jobs.filter(job => !hasTrigger(job.trigger))
-  };
 }
 
 // Evaluates css/api rules inside the current tab (uses the user's logged-in session).
@@ -145,7 +138,7 @@ async function selectJob(jobId) {
   const isManual = !hasTrigger(job.trigger);
   current = {
     job, layout, format,
-    values: isManual ? { ...values, ...manualValues.get(job.id) } : values,
+    values: initialValues(job, values, manualValues.get(job.id)),
     edited: new Set()
   };
 
@@ -325,7 +318,8 @@ async function init() {
   const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
   page = { url: tab?.url || '', title: tab?.title || '', tabId: tab?.id ?? null };
 
-  const { matched, manual } = availableJobs();
+  const jobs = availableJobs(library.jobs, page.url);
+  const { matched, manual } = jobs;
   if (!matched.length && !manual.length) {
     $('empty').hidden = false;
     return;
@@ -348,9 +342,7 @@ async function init() {
   $('clear-fields-btn').addEventListener('click', clearManualValues);
 
   $('main').hidden = false;
-  // Matching job first; otherwise the default job (if it is a manual one); else first manual.
-  const defaultJob = manual.find(job => job.id === library.settings.defaultJobId);
-  const initial = matched[0] ?? defaultJob ?? manual[0];
+  const initial = pickInitialJob(jobs, library.settings.defaultJobId);
   jobSelect.value = initial.id;
   selectJob(initial.id);
 }
